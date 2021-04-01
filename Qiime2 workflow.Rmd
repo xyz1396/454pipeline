@@ -1,0 +1,118 @@
+---
+title: "Qiime2 workflow"
+author: "xyz"
+date: "2021/3/31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# make meta data
+
+```{r}
+library(stringr)
+fileName<-dir("../data/fastq/")
+# 454Reads.MID_43.sff.fq is empty
+fileName<-fileName[fileName!="454Reads.MID_43.sff.fq"]
+sampleID<-str_split(fileName,"\\.",simplify = T)[,2]
+filePath<-paste0("/mnt/e/xiongyi/454Data_JiaLab-2020.12.31/from454sff/data/fastq/",fileName)
+df <- data.frame(
+  `sample-id` = sampleID,
+  `absolute-filepath` = filePath,
+  stringsAsFactors = F
+)
+colnames(df) <- c("sample-id", "absolute-filepath")
+write.table(
+  df,
+  "../data/metadata.tsv",
+  quote = F,
+  row.names = F,
+  sep = "\t"
+)
+```
+
+# import to qiime
+
+```{bash import}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+qiime tools import \
+  --type 'SampleData[SequencesWithQuality]' \
+  --input-path ../data/metadata.tsv \
+  --output-path ../data/fastq.qza \
+  --input-format SingleEndFastqManifestPhred33V2
+
+# check quality
+qiime demux summarize \
+    --i-data ../data/fastq.qza \
+    --o-visualization ../temp/qcSummary.qzv
+```
+
+# remove primer
+
+515F GTGCCAGCMGCCGCGG
+907R CCGTCAATTCMTTTRAGTTT
+
+[linked-adapters](https://cutadapt.readthedocs.io/en/stable/guide.html#linked-adapters)
+
+remove sequence shorter than 300
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+qiime cutadapt trim-single \
+  --p-cores 6 \
+  --i-demultiplexed-sequences ../data/fastq.qza \
+  --p-adapter GTGCCAGCMGCCGCGG...AAACTYAAAKGAATTGACGG \
+  --p-error-rate 0.2 \
+  --p-minimum-length 300 \
+  --o-trimmed-sequences ../temp/fastq.primer_trimed.qza \
+  --verbose &> ../temp/fastq.primer_trimed.log
+  
+qiime demux summarize \
+    --i-data ../temp/fastq.primer_trimed.qza \
+    --o-visualization ../temp/fastq.primer_trimed.qcSummary.qzv
+```
+
+## denoise by DaDa2
+
+[DADA2 denoise](https://mp.weixin.qq.com/s/s_lU38X56zLWKFMHmHUzCg)
+
+## no truncate
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+qiime dada2 denoise-pyro \
+  --p-trunc-len 0 \
+  --i-demultiplexed-seqs ../temp/fastq.primer_trimed.qza \
+  --p-n-threads 6 \
+  --o-table ../temp/fastq.denoised.qza \
+  --o-representative-sequences ../temp/fastq.rep-seqs.qza \
+  --o-denoising-stats ../temp/fastq.denoising-stats.qza
+
+qiime metadata tabulate \
+    --m-input-file ../temp/fastq.denoising-stats.qza \
+    --o-visualization ../temp/fastq.denoising-stats.qzv
+```
+
+## truncate to 370
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+qiime dada2 denoise-pyro \
+  --p-trunc-len 370 \
+  --i-demultiplexed-seqs ../temp/fastq.primer_trimed.qza \
+  --p-n-threads 6 \
+  --o-table ../temp/fastq370.table.qza \
+  --o-representative-sequences ../temp/fastq370.rep-seqs.qza \
+  --o-denoising-stats ../temp/fastq370.denoising-stats.qza
+
+qiime metadata tabulate \
+    --m-input-file ../temp/fastq370.denoising-stats.qza \
+    --o-visualization ../temp/fastq370.denoising-stats.qzv
+```
+

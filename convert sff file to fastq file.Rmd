@@ -1,0 +1,30 @@
+---
+title: "convert sff file to fastq file"
+author: "xyz"
+date: "2021/3/31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# install
+
+```{bash}
+# github link format for private project
+# git@github.com:xyz1396/454pipeline.git
+
+cd ..
+git clone git://github.com/indraniel/sff2fastq.git
+cd sff2fastq
+make
+```
+
+# convert
+
+```{bash}
+ls ../data/sff/ | xargs -n 1 -P 4 \
+  bash -c '../sff2fastq/sff2fastq -o ../data/fastq/$0.fq ../data/sff/$0'
+```
+

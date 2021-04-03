@@ -76,7 +76,7 @@ qiime demux summarize \
     --o-visualization ../temp/fastq.primer_trimed.qcSummary.qzv
 ```
 
-## denoise by DaDa2
+# denoise by DaDa2
 
 [DADA2 denoise](https://mp.weixin.qq.com/s/s_lU38X56zLWKFMHmHUzCg)
 
@@ -116,3 +116,98 @@ qiime metadata tabulate \
     --o-visualization ../temp/fastq370.denoising-stats.qzv
 ```
 
+# Cluster Feature 
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+qiime vsearch cluster-features-de-novo \
+  --i-sequences ../temp/fastq370.rep-seqs.qza \
+  --i-table ../temp/fastq370.table.qza \
+  --p-perc-identity 0.97 \
+  --o-clustered-table ../temp/fastq370.97.table.qza \
+  --o-clustered-sequences ../temp/fastq370.97.seq.qza \
+  --p-threads 6
+```
+
+# species annotation
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+qiime feature-classifier classify-sklearn \
+  --i-reads ../temp/fastq370.97.seq.qza \
+  --i-classifier ../../2021xiongyiAnalysis/db/SILVA_138/silva138_515F_907R_classifier.qza \
+  --o-classification ../temp/denovo.clustered.naive_bayes_taxonomy.qza \
+  --p-n-jobs 1 \
+  &
+qiime feature-classifier classify-consensus-blast \
+  --i-query ../temp/fastq370.97.seq.qza \
+  --i-reference-reads ../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs.qza \
+  --i-reference-taxonomy ../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-tax.qza \
+  --o-classification ../temp/denovo.clustered.blast_taxonomy.qza
+```
+
+# export OTU table and sequence
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+qiime tools export \
+  --input-path ../temp/fastq370.97.seq.qza \
+  --output-path ../temp
+
+qiime tools export \
+  --input-path ../temp/fastq370.97.table.qza \
+  --output-path ../temp
+  
+biom convert -i ../temp/feature-table.biom \
+  -o ../temp/feature-table.tsv --to-tsv
+  
+qiime tools export \
+  --input-path ../temp/denovo.clustered.naive_bayes_taxonomy.qza \
+  --output-path ../temp/
+```
+
+# Select OTU with more than 1 sequence
+
+```{r}
+library(tidyverse)
+otu <- read.table("../temp/feature-table.tsv",header = T,
+                  sep = "\t",comment.char="",skip=1)
+colnames(otu)[1]<-"OTU.ID"
+tax <- read.table("../temp/taxonomy.tsv",
+                  header = T,
+                  sep = "\t")
+# 1 OTU without annotation
+sum(tax$Taxon == "Unassigned")
+# tax<-tax[tax$Taxon != "Unassigned",]
+sum(is.na(tax$Taxon))
+rankTaxon <- data.frame(Taxon = tax$Taxon)
+rankTaxon <-
+  separate(rankTaxon, Taxon, sep = ";", into = as.character(1:7))
+colnames(rankTaxon) <-
+  c("Kingdom",
+    "Phylum",
+    "Class",
+    "Order",
+    "Family",
+    "Genus",
+    "Species")
+rankTaxon <- cbind(id = tax$Feature.ID,
+                   rankTaxon,
+                   Confidence = tax$Confidence)
+otuWithTax <- right_join(otu, rankTaxon, by = c("OTU.ID" = "id"))
+totalCount <- rowSums(otuWithTax[, 2:ncol(otu)])
+totalPercent <- totalCount / sum(totalCount) * 100
+otuWithTax$totalCount <- totalCount
+otuWithTax$totalPercent <- totalPercent
+otuWithTax <- arrange(otuWithTax, desc(totalCount))
+otuWithTax$OTU.IX<-paste0("OTU",1:nrow(otuWithTax))
+otuWithTax<-otuWithTax[otuWithTax$totalCount > 1,]
+write.csv(otuWithTax,
+          "../table/OTUwithTax97ByNaive_bayesSortByOneMore.csv",
+          row.names = F)
+# 6524 OTU with more than 1 sequences 
+sum(otuWithTax$totalCount > 1)
+```

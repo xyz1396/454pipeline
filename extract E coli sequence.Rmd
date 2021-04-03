@@ -1,0 +1,122 @@
+---
+title: "extract E coli sequence"
+author: "xyz"
+date: "2021/4/2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# narrow ecoli sequence to 370
+
+```{r}
+library(Biostrings)
+ecoli<-readDNAStringSet("../data/ecoli16sSeq515F907R.fasta")
+ecoli<-narrow(ecoli,1,370)
+writeXStringSet(ecoli,"../temp/ecoli16sSeq515F907R370.fasta")
+```
+
+# extract sequences and otu table filtered by dada2
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+
+qiime tools export \
+  --input-path ../temp/fastq370.rep-seqs.qza \
+  --output-path ../temp/fastq370.rep-seqs.fasta
+  
+qiime tools export \
+  --input-path ../temp/fastq370.table.qza \
+  --output-path ../temp/fastq370.rep-seqs.fasta
+  
+biom convert -i ../temp/fastq370.rep-seqs.fasta/feature-table.biom \
+  -o ../temp/fastq370.rep-seqs.fasta/feature-table.tsv --to-tsv
+
+```
+
+# blast ecoli sequence to extracted sequence
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+
+blastn -query ../data/ecoli16sSeq515F907R.fasta \
+  -subject ../temp/fastq370.rep-seqs.fasta/dna-sequences.fasta\
+  -outfmt 6 \
+  -evalue 1e-5 \
+  -perc_identity 80 \
+  -task blastn \
+  -max_target_seqs 100000 \
+  -out ../temp/ecoli16s377InFastq370.txt
+
+blastn -query ../temp/ecoli16sSeq515F907R370.fasta \
+  -subject ../temp/fastq370.rep-seqs.fasta/dna-sequences.fasta\
+  -outfmt 6 \
+  -evalue 1e-5 \
+  -perc_identity 80 \
+  -task blastn \
+  -max_target_seqs 100000 \
+  -out ../temp/ecoli16s370InFastq370.txt
+```
+
+```{r}
+# 1	qseqid	Query Seq-id (ID of your sequence)
+# 2	sseqid	Subject Seq-id (ID of the database hit)
+# 3	pident	Percentage of identical matches
+# 4	length	Alignment length
+# 5	mismatch	Number of mismatches
+# 6	gapopen	Number of gap openings
+# 7	qstart	Start of alignment in query
+# 8	qend	End of alignment in query
+# 9	sstart	Start of alignment in subject (database hit)
+# 10	send	End of alignment in subject (database hit)
+# 11	evalue	Expectation value (E-value)
+# 12	bitscore	Bit score
+
+blastColnames <-
+  c(
+    "qseqid",
+    "sseqid",
+    "pident",
+    "length",
+    "mismatch",
+    "gapopen",
+    "qstart",
+    "qend",
+    "sstart",
+    "send",
+    "evalue",
+    "bitscore"
+  )
+blastToReads<-read.delim("../temp/ecoli16s370InFastq370.txt",header = F)
+otu <- read.table("../temp/fastq370.rep-seqs.fasta/feature-table.tsv",header = T,
+                  sep = "\t",comment.char="",skip=1)
+blastWithOTU<-left_join(blastToReads,otu,by=c("sseqid"="X.OTU.ID"))
+blastWithOTU$TotalCount<-rowSums(blastWithOTU[,13:231])
+blastWithOTU90<-blastWithOTU[blastWithOTU$pident>90,]
+write.csv(blastWithOTU90,"../table/EcoliBlastResultWithOTU90.csv",row.names = F)
+# 1.467117 % sequence same as ecoli
+blastWithOTU90$TotalCount[1]/sum(colSums(otu[,-1]))*100
+```
+
+# annote sequences filtered by dada2
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+qiime feature-classifier classify-sklearn \
+  --i-reads ../temp/fastq370.rep-seqs.qza \
+  --i-classifier ../../2021xiongyiAnalysis/db/SILVA_138/silva138_515F_907R_classifier.qza \
+  --o-classification ../temp/fastq370.naive_bayes_taxonomy.qza \
+  --p-n-jobs 1 \
+  &
+qiime feature-classifier classify-consensus-blast \
+  --i-query ../temp/fastq370.rep-seqs.qza \
+  --i-reference-reads ../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs.qza \
+  --i-reference-taxonomy ../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-tax.qza \
+  --o-classification ../temp/fastq370.blast_taxonomy.qza
+```
+

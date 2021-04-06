@@ -1,5 +1,5 @@
 ---
-title: "extract E coli sequence"
+title: "extract E coli sequence and abundance"
 author: "xyz"
 date: "2021/4/2"
 output: html_document
@@ -119,4 +119,75 @@ qiime feature-classifier classify-consensus-blast \
   --i-reference-taxonomy ../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-tax.qza \
   --o-classification ../temp/fastq370.blast_taxonomy.qza
 ```
+
+# export amplicon sequence variant (ASV) annotations
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+  
+qiime tools export \
+  --input-path ../temp/fastq370.naive_bayes_taxonomy.qza \
+  --output-path ../temp/fastq370.rep-seqs.fasta/
+```
+
+# Select amplicon sequence variant (ASV) with more than 1 sequence
+
+```{r}
+library(tidyverse)
+asv <- read.table("../temp/fastq370.rep-seqs.fasta/feature-table.tsv",header = T,
+                  sep = "\t",comment.char="",skip=1)
+colnames(asv)[1]<-"ASV.ID"
+tax <- read.table("../temp/fastq370.rep-seqs.fasta/taxonomy.tsv",
+                  header = T,
+                  sep = "\t")
+# 1 ASV without annotation
+sum(tax$Taxon == "Unassigned")
+# tax<-tax[tax$Taxon != "Unassigned",]
+sum(is.na(tax$Taxon))
+rankTaxon <- data.frame(Taxon = tax$Taxon)
+rankTaxon <-
+  separate(rankTaxon, Taxon, sep = "; ", into = as.character(1:7))
+colnames(rankTaxon) <-
+  c("Kingdom",
+    "Phylum",
+    "Class",
+    "Order",
+    "Family",
+    "Genus",
+    "Species")
+rankTaxon <- cbind(id = tax$Feature.ID,
+                   rankTaxon,
+                   Confidence = tax$Confidence)
+asvWithTax <- right_join(asv, rankTaxon, by = c("ASV.ID" = "id"))
+totalCount <- rowSums(asvWithTax[, 2:ncol(asv)])
+totalPercent <- totalCount / sum(totalCount) * 100
+asvWithTax$totalCount <- totalCount
+asvWithTax$totalPercent <- totalPercent
+asvWithTax <- arrange(asvWithTax, desc(totalCount))
+asvWithTax$ASV.IX<-paste0("ASV",1:nrow(asvWithTax))
+asvWithTax<-asvWithTax[asvWithTax$totalCount > 1,]
+write.csv(asvWithTax,
+          "../table/ASVwithTaxByNaive_bayesSortByOneMore.csv",
+          row.names = F)
+# 19154 ASV with more than 1 sequences 
+sum(asvWithTax$totalCount > 1)
+```
+
+# extract  g__Escherichia-Shigella sequences and abundance
+
+```{r}
+genus<-asvWithTax$Genus
+genus[is.na(genus)]<-""
+ecoli<-asvWithTax[genus=="g__Escherichia-Shigella",]
+write.csv(ecoli,
+          "../table/Escherichia-ShigellASVwithTax.csv",
+          row.names = F)
+
+allReads<-readDNAStringSet("../temp/fastq370.rep-seqs.fasta/dna-sequences.fasta")
+ecoliReads<-allReads[ecoli$ASV.ID]
+names(ecoliReads)<-ecoli$ASV.IX
+writeXStringSet(ecoliReads,"../temp/Escherichia-ShigellASV.fasta",width=20000)
+```
+
 

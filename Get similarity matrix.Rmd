@@ -1,0 +1,102 @@
+---
+title: "from otu to similarity matrix"
+author: "xyz"
+date: "2021/4/6"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# read Enterobacteriaceae relatives
+
+```{r}
+library(Biostrings)
+En<-readRDS("../temp/En.rds")
+EnSeq<-readRDS("../temp/EnSeq.rds")
+```
+
+# read E. coli sequence
+
+```{r}
+ecoliEx <-
+  readDNAStringSet("../temp/Escherichia-ShigellASV.fasta")
+ecoliExWithTax <-
+  read.csv("../table/Escherichia-ShigellASVwithTax.csv")
+names(ecoliEx)<-ecoliExWithTax$OTU.IX
+ecoliStandard<-readDNAStringSet("../temp/ecoli16sSeq515F907R370.fasta")
+# the sequence of E_coli_W is the same as ASV2 in ecoliEx
+ecoliStandard[[1]]==ecoliEx[[1]]
+
+allEn<-c(ecoliEx,EnSeq)
+writeXStringSet(allEn,"../temp/allEn.fasta")
+
+annotationDf <- data.frame(
+  Taxa = names(allEn),
+  Source = c(
+    "E. coli W",
+    rep("Internal reference", length(ecoliEx)),
+    str_sub(En$Genus, 6)
+  ),
+  Species = c("E. coli W",
+              names(ecoliEx),
+              str_sub(En$Species, 6)),
+  Count = c(
+    1, ecoliExWithTax$totalCount, rep(1, length(EnSeq))
+  )
+)
+```
+
+# get Nucleotide Similarity by blast
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+
+# one sequence may match another more than 1 time
+blastn -query allEn.fasta -subject allEn.fasta -outfmt 6  \
+  -max_hsps 1000 \
+  -max_target_seqs 1000 \
+  -evalue 1000 -perc_identity 0 \
+  -out "allEn2allEn.txt"
+```
+
+```{r}
+library(tidyverse)
+blastColnames <-
+  c(
+    "qseqid",
+    "sseqid",
+    "pident",
+    "length",
+    "mismatch",
+    "gapopen",
+    "qstart",
+    "qend",
+    "sstart",
+    "send",
+    "evalue",
+    "bitscore"
+  )
+df<-read.delim("allEn2allEn.txt",header = F)
+colnames(df) <- blastColnames
+
+# arrange by match length
+df2<-arrange(df,qseqid,sseqid,desc(length))
+# reduplicate by keep the longest match length
+df2<-df2[!duplicated(df2[,1:2]),]
+write.csv(df2,"All Enterobacteriaceae Nucleotide Similarity by blast.csv",row.names = F)
+
+# the alignment of E.coli Sequence
+df3<-df2[str_detect(df2$qseqid,"OTU") & str_detect(df2$sseqid,"OTU"),]
+df3<-rbind(df3,df2[df2$qseqid=="E_coli_W" & str_detect(df2$sseqid,"OTU"),])
+df3<-rbind(df3,df2[str_detect(df2$qseqid,"OTU") & df2$sseqid=="E_coli_W",])
+df3<-rbind(df3,df2[df2$qseqid=="E_coli_W" & df2$sseqid=="E_coli_W",])
+nrow(df3)==24*24
+
+# convert to matrix format
+df4<-pivot_wider(df3[,1:3],names_from =sseqid,values_from =pident)
+colnames(df4)[1]<-""
+write.csv(df4,"E coli Nucleotide Similarity Matrix by blast 97.csv",row.names = F)
+```

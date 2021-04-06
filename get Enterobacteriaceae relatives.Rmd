@@ -1,0 +1,77 @@
+---
+title: "get Enterobacteriaceae relatives"
+author: "xyz"
+date: "2021/3/5"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### cluster silva-138-99 to silva-138-90
+
+```{r trim to 370}
+library(Biostrings)
+library(tidyverse)
+silva <-
+  readDNAStringSet(
+    "../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs_515F_907R/dna-sequences.fasta"
+  )
+silva<-silva[lengths(silva)>=370]
+silva<-narrow(silva,1,370)
+writeXStringSet(silva,"../temp/silva-138-370.fasta")
+```
+
+```{bash cluster to 90}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+  
+vsearch --cluster_fast ../temp/silva-138-370.fasta \
+  --id 0.9 \
+  --centroids ../temp/silva-138-90.fasta
+```
+
+
+### filter out filter Enterobacteriaceae without Escherichia coli
+
+```{r}
+silva <-
+  readDNAStringSet(
+    "../temp/silva-138-90.fasta"
+  )
+silvaTax <-
+  read.table(
+    "../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs_515F_907R/taxonomy.tsv",
+    sep = "\t",header = T
+  )
+silvaTax<-silvaTax[match(names(silva),silvaTax$Feature.ID),]
+
+colnames(silvaTax)<-c("ID","TaxonFull")
+rankTaxon <- data.frame(Taxon = silvaTax$TaxonFull)
+rankTaxon <- separate(rankTaxon, Taxon, sep = "; ", into = as.character(1:7))
+colnames(rankTaxon) <-
+  c("Kingdom",
+    "Phylum",
+    "Class",
+    "Order",
+    "Family",
+    "Genus",
+    "Species")
+rankTaxon <- cbind(silvaTax,rankTaxon)
+
+En <- rankTaxon
+En[is.na(En)] <- "Unknown"
+# filter Enterobacteriaceae without Escherichia coli
+En <- dplyr::filter(En,
+             Family == "f__Enterobacteriaceae",
+             Genus != "g__Escherichia-Shigella",
+             Species != "s__Escherichia_coli")
+sort(table(En$Genus),decreasing = T)
+# get 3 most abundant genus
+En <- En[En$Genus %in% c("g__Enterobacter","g__Klebsiella","g__Citrobacter"),]
+EnSeq<-silva[match(En$ID,names(silva))]
+saveRDS(En,"../temp/En.rds")
+saveRDS(EnSeq,"../temp/EnSeq.rds")
+```
+

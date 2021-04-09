@@ -1,0 +1,218 @@
+---
+title: "Build tree and collapse nodes"
+author: "xyz"
+date: "2021/4/7"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# get annotation dataframe
+
+```{r}
+# read Nucleotide Similarity
+df2<-read.csv("../table/All Enterobacteriaceae Nucleotide Similarity by blast.csv")
+distToStandard<-df2[df2$sseqid=="ASV2",1:3]
+distToStandard$pident.cut <-
+  cut(distToStandard$pident,
+      breaks = c(0, 80, 82.5,85, 87.5, 90, 92.5, 95, 97.5,100))
+distToStandard<-distToStandard[,c(1,4)]
+colnames(distToStandard)<-c("Taxa","Similarity")
+annotationDf <- read.csv("../temp/allEn.Annotation.csv")
+annotationDf<-left_join(annotationDf,distToStandard,by=c("Taxa"="Taxa"))
+write.csv(annotationDf,"../temp/allEn.Annotation.WithSimilarity.csv",row.names = F)
+```
+
+### build Enterobacteriaceae Relatives tree by IQ-TREE
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+muscle -in ../temp/allEn.fasta -out ../temp/allEn.aligned.fasta
+# file                     format  type  num_seqs  sum_len  min_len  avg_len  max_len
+# allEnLess.aligned.fasta  FASTA   DNA         51  108,120    2,120    2,120    2,120
+seqkit stats ../temp/allEn.aligned.fasta
+trimal -in ../temp/allEn.aligned.fasta -out ../temp/allEn.aligned.trimed.fasta -gt 0.20 -cons 40
+# file                            format  type  num_seqs  sum_len  min_len  avg_len  max_len
+# allEnLess.aligned.trimed.fasta  FASTA   DNA         51   21,624      424      424      424
+seqkit stats ../temp/allEn.aligned.trimed.fasta
+# check all sequence is unique after trim
+seqkit rmdup ../temp/allEn.aligned.trimed.fasta -s -i -o ../temp/unique.fasta  \
+  -d ../temp/duplicated.fasta -D ../temp/duplicated.detail.txt
+mkdir ../temp/iqtree
+iqtree -s ../temp/allEn.aligned.trimed.fasta -bb 1000 -redo -alrt 1000 \
+  -m MFP -nt AUTO -pre ../temp/iqtree/allEn -T AUTO
+```
+
+[top-r-color-palettes](https://www.datanovia.com/en/blog/top-r-color-palettes-to-know-for-great-data-visualization/)
+
+[geom fruit](https://yulab-smu.top/treedata-book/chapter10.html#geom-fruit2)
+
+[collapsing and expanding clade](https://yulab-smu.top/treedata-book/chapter6.html?q=collaps#collapsing-and-expanding-clade)
+
+```{r draw tree}
+library(ggtree)
+library(ggtreeExtra)
+library(viridis)
+
+tree <- read.tree("../temp/iqtree/allEn.contree")
+tempDf <- annotationDf
+tempDf$Count <- log10(tempDf$Count)
+tempDf$Similarity<-factor(tempDf$Similarity,levels=rev(levels(tempDf$Similarity)))
+# to remove line in none-ecoli leaf
+tempDf[tempDf$Source != "E. coli", "Similarity"] <- NA
+p <- ggtree(tree, layout = "rectangular"
+            # branch.length='none'
+            )
+p <- p %<+% tempDf +
+  geom_tippoint(aes(color = Source), size = 2, alpha = 1) +
+  geom_nodelab(size = 2, color = "orange",hjust = 0)
+  # geom_tiplab(aes(label = Species),
+  #             color = 'black',
+  #             offset = 0.005,
+  #             align = T,size=1.5)
+# colorLevels<-c("#0E33ED","#0E33ED","#552CA8","#792986","#9D2563","#C02241","#E41E1E")
+p <- p + geom_fruit(
+  geom = geom_bar,
+  mapping = aes(y = Taxa, x = Count, fill = Similarity),
+  pwidth = 0.38,
+  orientation = "y",
+  stat = "identity",
+  offset = 0.02
+) + 
+  labs(fill = 'Similarity (%)') + 
+  # na.translate = F remove NA in legend
+  # option="B" "inferno" (or "B")
+  scale_fill_viridis(discrete = TRUE,option="B",na.translate = F)+
+  # scale_fill_manual(values = colorLevels,na.translate = F)+
+  theme(legend.justification = c(1, 0), legend.position = c(0.92, 0))
+p + ggsave(
+  "annotationDfLessRelatives 97 with quality rectangular by IQ-TREE.pdf",
+  width = 8,
+  height = 7
+)
+```
+
+### Collapsing Clade
+
+```{r}
+p2 <- ggtree(tree, layout = "rectangular", branch.length = 'none')
+p2 <- p2 %<+% tempDf +
+  geom_tippoint(aes(color = Source), size = 2, alpha = 1) +
+  # change node label to node id for checking conveniently+
+  geom_nodelab(aes(label = node),
+               size = 4,
+               color = "black",
+               hjust = 0)+
+  geom_tiplab(aes(label = node),
+              color = 'black',
+              offset = 0.005,
+              align = T,size=3)
+# check which Clade to collapse
+p2+ ggsave(
+  "Check Collapsing Clade.pdf",
+  width = 8,
+  height = 7
+)
+```
+
+```{r}
+p2 <- ggtree(tree, layout = "rectangular")
+p2 <- p2 %<+% tempDf
+  # geom_tippoint(aes(color = Source), size = 2, alpha = 1) +
+  # geom_nodelab(aes(label = node),
+  #              size = 4,
+  #              color = "black",
+  #              hjust = 0)
+# geom_tiplab(aes(label = Species),
+#             color = 'black',
+#             offset = 0.005,
+#             align = T,size=1.5)
+# check which Clade to collapse
+p2
+p2 <-
+  collapse(p2, 93, 'min') %>% 
+  collapse(64, 'min') %>% 
+  collapse(61, 'min') %>% 
+  collapse(90, 'min')
+# p2+geom_hilight(node=90,fill="red")
+p2<-p2+geom_cladelab(node=64, label="Serratia",hjust=-1.2)
+p2<-p2+geom_cladelab(node=61, label="Serratia",hjust=-2.7)
+p2<-p2+geom_cladelab(node=90, label="Serratia",hjust=-0.8)
+p2<-p2+geom_cladelab(node=93, label="Salmonella",hjust=-0.8)
+p2<-p2+geom_cladelab(node=69, label="Escherichia coli",hjust=0)
+p2<-p2+xlim(0, 0.4)
+segmentDf <- data.frame(x1 = 0.12,
+                        x2 = 0.12,
+                        y1 = 1,
+                        y2 = 7)
+# p2<-p2 + geom_segment(aes(
+#   x = x1,
+#   y = y1,
+#   xend = x2,
+#   yend = y2,
+# ), data = segmentDf)
+p2<-p2+annotate("segment", x=0.12,xend =0.12, y=1, yend = 7)
+p2<-p2+annotate("text", x=0.15, y=4, label= "Pantoea")
+p2<-p2+annotate("text", x=0.11, y=29, label= "Serratia")
+p2 + ggsave(
+  "Collapsing Clade.pdf",
+  width = 8,
+  height = 7
+)
+```
+
+```{r}
+p2 <- ggtree(tree, layout = "rectangular")
+p2 <- p2 %<+% tempDf 
+p2 <- p2 + geom_fruit(
+  geom = geom_bar,
+  mapping = aes(y = Taxa, x = Count, fill = Similarity),
+  pwidth = 0.38,
+  orientation = "y",
+  stat = "identity",
+  offset = 0.02
+) + 
+  labs(fill = 'Similarity (%)') + 
+  scale_fill_viridis(discrete = TRUE,option="B",na.translate = F)+
+  theme(legend.justification = c(1, 0), legend.position = c(0.77, 0.23))
+p2 <-
+  collapse(p2, 93, 'min') %>% 
+  collapse(64, 'min') %>% 
+  collapse(61, 'min') %>% 
+  collapse(90, 'min')
+# p2+geom_hilight(node=90,fill="red")
+# add genera name manually
+p2<-p2+geom_cladelab(node=64, label="Serratia",hjust=-1.2)
+p2<-p2+geom_cladelab(node=61, label="Serratia",hjust=-2.7)
+p2<-p2+geom_cladelab(node=90, label="Serratia",hjust=-0.8)
+p2<-p2+geom_cladelab(node=93, label="Salmonella",hjust=-0.8)
+p2<-p2+xlim(0, 0.4)
+segmentDf <- data.frame(x1 = 0.12,
+                        x2 = 0.12,
+                        y1 = 1,
+                        y2 = 7)
+# p2<-p2 + geom_segment(aes(
+#   x = x1,
+#   y = y1,
+#   xend = x2,
+#   yend = y2,
+# ), data = segmentDf)
+p2<-p2+annotate("segment", x=0.12,xend =0.12, y=1, yend = 7)
+p2<-p2+annotate("text", x=0.15, y=4, label= "Pantoea")
+p2<-p2+annotate("segment", x=0.263,xend =0.263, y=30, yend = 51)
+p2<-p2+annotate("text", x=0.32, y=43, label= "Escherichia coli")
+p2<-p2+annotate("text", x=0.11, y=29, label= "Serratia")
+# add bootstrap score in the end 
+p2<-p2+geom_nodelab(size = 2,
+               color = "orange",
+               hjust = 0)
+p2 + ggsave(
+  "Collapsing Clade with abundance.pdf",
+  width = 8,
+  height = 7
+)
+```
+

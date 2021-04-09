@@ -19,7 +19,7 @@ silva <-
     "../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs_515F_907R/dna-sequences.fasta"
   )
 silva<-silva[lengths(silva)>=370]
-silva<-narrow(silva,1,370)
+# silva<-narrow(silva,1,370)
 writeXStringSet(silva,"../temp/silva-138-370.fasta")
 ```
 

@@ -1,0 +1,24 @@
+---
+title: "Get similarity matrix by IQ tree"
+author: "xyz"
+date: "2021/4/9"
+output: html_document
+---
+
+# get matrix
+
+```{r}
+library(tidyverse)
+seqDist <-
+  read.table("../temp/iqtree/allEn.mldist", skip = 1)
+ix <- seqDist$V1
+colnames(seqDist)[-1] <- ix
+colnames(seqDist)[1] <- "qseqid"
+seqDist<-pivot_longer(seqDist,-qseqid,names_to = "sseqid",values_to = "distance")
+seqDist$pident<-(1-seqDist$distance)*100
+View(seqDist[seqDist$qseqid=="ASV2",])
+write.csv(seqDist,
+          "../table/E coli Nucleotide Similarity Matrix by IQ tree.csv",
+          row.names = F)
+```
+

@@ -1,0 +1,98 @@
+---
+title: "get Enterobacteriaceae relatives in each one cluster"
+author: "xyz"
+date: "2021/4/9"
+output: html_document
+---
+
+# filter out filter Enterobacteriaceae without Escherichia coli
+
+```{r}
+library(Biostrings)
+library(tidyverse)
+silva <-
+  readDNAStringSet(
+    "../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs_515F_907R/dna-sequences.fasta"
+  )
+silva<-silva[lengths(silva)>=370]
+silvaTax <-
+  read.table(
+    "../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs_515F_907R/taxonomy.tsv",
+    sep = "\t",header = T
+  )
+silvaTax<-silvaTax[match(names(silva),silvaTax$Feature.ID),]
+colnames(silvaTax)<-c("ID","TaxonFull")
+rankTaxon <- data.frame(Taxon = silvaTax$TaxonFull)
+rankTaxon <- separate(rankTaxon, Taxon, sep = "; ", into = as.character(1:7))
+colnames(rankTaxon) <-
+  c("Kingdom",
+    "Phylum",
+    "Class",
+    "Order",
+    "Family",
+    "Genus",
+    "Species")
+rankTaxon <- cbind(silvaTax,rankTaxon)
+
+En <- rankTaxon
+En[is.na(En)] <- "Unknown"
+# filter Enterobacteriaceae without Escherichia coli
+En <- dplyr::filter(En,
+             Family == "f__Enterobacteriaceae",
+             Genus != "g__Escherichia-Shigella",
+             Species != "s__Escherichia_coli")
+sort(table(En$Genus),decreasing = T)
+# get 5 most abundant genus
+En <- En[En$Genus %in% c("g__Enterobacter","g__Klebsiella",
+                         "g__Salmonella","g__Citrobacter","g__Cronobacter"),]
+EnSeq<-silva[match(En$ID,names(silva))]
+writeXStringSet(EnSeq,"../temp/EnWithoutEcoli.fasta",width=10000)
+```
+
+# cluster by vsearch
+
+```{bash cluster to 97}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+mkdir ../temp/EnWithoutEcoli97Cluster 
+vsearch --cluster_fast ../temp/EnWithoutEcoli.fasta \
+  --id 0.97 \
+  --clusters ../temp/EnWithoutEcoli97Cluster/EnWithoutEcoli97Cluster.list \
+  --clusterout_id 
+```
+
+# read each cluster
+
+```{r}
+clusterPath<-"../temp/EnWithoutEcoli97Cluster/"
+ENcluster<-dir(clusterPath)
+ENclusterSeq<-list()
+for (i in ENcluster){
+  ENclusterSeq[[i]]<-readDNAStringSet(paste0(clusterPath,i))
+}
+# get the top 5 biggest clusters
+clusterSize<-sort(lengths(ENclusterSeq),decreasing = T)[1:5]
+
+# taxonomy of the 1st
+cluster1<-ENclusterSeq[[names(clusterSize[1])]]
+cluster1<-unique(cluster1)
+cluster1Tax<-rankTaxon[match(names(cluster1),rankTaxon$ID),]
+sort(table(cluster1Tax$Genus),decreasing = T)
+# filter 10 g__Salmonella sequence
+cluster1Tax<-cluster1Tax[cluster1Tax$Genus=="g__Salmonella",]
+set.seed(9527)
+cluster1Tax<-cluster1Tax[sample(1:nrow(cluster1Tax),10),]
+cluster1<-cluster1[cluster1Tax$ID]
+
+# taxonomy of the 2nt
+cluster2<-ENclusterSeq[[names(clusterSize[2])]]
+cluster2<-unique(cluster2)
+cluster2Tax<-rankTaxon[match(names(cluster2),rankTaxon$ID),]
+sort(table(cluster2Tax$Genus),decreasing = T)
+# filter 10 g__Klebsiella sequence
+cluster2Tax<-cluster2Tax[cluster2Tax$Genus=="g__Klebsiella",]
+set.seed(9527)
+cluster2Tax<-cluster2Tax[sample(1:nrow(cluster2Tax),10),]
+cluster2<-cluster2[cluster2Tax$ID]
+```
+

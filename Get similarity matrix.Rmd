@@ -1,5 +1,5 @@
 ---
-title: "from otu to similarity matrix"
+title: "from otu to similarity matrix by blast"
 author: "xyz"
 date: "2021/4/6"
 output: html_document

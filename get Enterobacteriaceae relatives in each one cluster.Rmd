@@ -14,16 +14,18 @@ silva <-
   readDNAStringSet(
     "../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs_515F_907R/dna-sequences.fasta"
   )
-silva<-silva[lengths(silva)>=370]
+silva <- silva[lengths(silva) >= 370]
 silvaTax <-
   read.table(
     "../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs_515F_907R/taxonomy.tsv",
-    sep = "\t",header = T
+    sep = "\t",
+    header = T
   )
-silvaTax<-silvaTax[match(names(silva),silvaTax$Feature.ID),]
-colnames(silvaTax)<-c("ID","TaxonFull")
+silvaTax <- silvaTax[match(names(silva), silvaTax$Feature.ID), ]
+colnames(silvaTax) <- c("ID", "TaxonFull")
 rankTaxon <- data.frame(Taxon = silvaTax$TaxonFull)
-rankTaxon <- separate(rankTaxon, Taxon, sep = "; ", into = as.character(1:7))
+rankTaxon <-
+  separate(rankTaxon, Taxon, sep = "; ", into = as.character(1:7))
 colnames(rankTaxon) <-
   c("Kingdom",
     "Phylum",
@@ -32,21 +34,28 @@ colnames(rankTaxon) <-
     "Family",
     "Genus",
     "Species")
-rankTaxon <- cbind(silvaTax,rankTaxon)
+rankTaxon <- cbind(silvaTax, rankTaxon)
 
 En <- rankTaxon
 En[is.na(En)] <- "Unknown"
 # filter Enterobacteriaceae without Escherichia coli
-En <- dplyr::filter(En,
-             Family == "f__Enterobacteriaceae",
-             Genus != "g__Escherichia-Shigella",
-             Species != "s__Escherichia_coli")
-sort(table(En$Genus),decreasing = T)
+En <- dplyr::filter(
+  En,
+  Family == "f__Enterobacteriaceae",
+  Genus != "g__Escherichia-Shigella",
+  Species != "s__Escherichia_coli"
+)
+sort(table(En$Genus), decreasing = T)
 # get 5 most abundant genus
-En <- En[En$Genus %in% c("g__Enterobacter","g__Klebsiella",
-                         "g__Salmonella","g__Citrobacter","g__Cronobacter"),]
-EnSeq<-silva[match(En$ID,names(silva))]
-writeXStringSet(EnSeq,"../temp/EnWithoutEcoli.fasta",width=10000)
+En <- En[En$Genus %in% c(
+  "g__Enterobacter",
+  "g__Klebsiella",
+  "g__Salmonella",
+  "g__Citrobacter",
+  "g__Cronobacter"
+), ]
+EnSeq <- silva[match(En$ID, names(silva))]
+writeXStringSet(EnSeq, "../temp/EnWithoutEcoli.fasta", width = 10000)
 ```
 
 # cluster by vsearch
@@ -64,35 +73,72 @@ vsearch --cluster_fast ../temp/EnWithoutEcoli.fasta \
 # read each cluster
 
 ```{r}
-clusterPath<-"../temp/EnWithoutEcoli97Cluster/"
-ENcluster<-dir(clusterPath)
-ENclusterSeq<-list()
-for (i in ENcluster){
-  ENclusterSeq[[i]]<-readDNAStringSet(paste0(clusterPath,i))
+clusterPath <- "../temp/EnWithoutEcoli97Cluster/"
+ENcluster <- dir(clusterPath)
+ENclusterSeq <- list()
+for (i in ENcluster) {
+  ENclusterSeq[[i]] <- readDNAStringSet(paste0(clusterPath, i))
 }
 # get the top 5 biggest clusters
-clusterSize<-sort(lengths(ENclusterSeq),decreasing = T)[1:5]
+clusterSize <- sort(lengths(ENclusterSeq), decreasing = T)[1:5]
 
 # taxonomy of the 1st
-cluster1<-ENclusterSeq[[names(clusterSize[1])]]
-cluster1<-unique(cluster1)
-cluster1Tax<-rankTaxon[match(names(cluster1),rankTaxon$ID),]
-sort(table(cluster1Tax$Genus),decreasing = T)
+cluster1 <- ENclusterSeq[[names(clusterSize[1])]]
+cluster1 <- unique(cluster1)
+cluster1Tax <- rankTaxon[match(names(cluster1), rankTaxon$ID), ]
+sort(table(cluster1Tax$Genus), decreasing = T)
 # filter 10 g__Salmonella sequence
-cluster1Tax<-cluster1Tax[cluster1Tax$Genus=="g__Salmonella",]
+cluster1Tax <-
+  cluster1Tax[cluster1Tax$Genus == "g__Salmonella" &
+                ! str_detect(cluster1Tax$Species, "uncultured"),]
 set.seed(9527)
-cluster1Tax<-cluster1Tax[sample(1:nrow(cluster1Tax),10),]
-cluster1<-cluster1[cluster1Tax$ID]
+cluster1Tax <- cluster1Tax[sample(1:nrow(cluster1Tax), 10), ]
+cluster1 <- cluster1[cluster1Tax$ID]
 
 # taxonomy of the 2nt
-cluster2<-ENclusterSeq[[names(clusterSize[2])]]
-cluster2<-unique(cluster2)
-cluster2Tax<-rankTaxon[match(names(cluster2),rankTaxon$ID),]
-sort(table(cluster2Tax$Genus),decreasing = T)
+cluster2 <- ENclusterSeq[[names(clusterSize[2])]]
+cluster2 <- unique(cluster2)
+cluster2Tax <- rankTaxon[match(names(cluster2), rankTaxon$ID), ]
+sort(table(cluster2Tax$Genus), decreasing = T)
 # filter 10 g__Klebsiella sequence
-cluster2Tax<-cluster2Tax[cluster2Tax$Genus=="g__Klebsiella",]
+cluster2Tax <- cluster2Tax[cluster2Tax$Genus == "g__Klebsiella" &
+                             !str_detect(cluster2Tax$Species, "uncultured"), ]
 set.seed(9527)
-cluster2Tax<-cluster2Tax[sample(1:nrow(cluster2Tax),10),]
-cluster2<-cluster2[cluster2Tax$ID]
+cluster2Tax <- cluster2Tax[sample(1:nrow(cluster2Tax), 10), ]
+cluster2 <- cluster2[cluster2Tax$ID]
+
+# taxonomy of the 3rd
+cluster3 <- ENclusterSeq[[names(clusterSize[3])]]
+cluster3 <- unique(cluster3)
+cluster3Tax <- rankTaxon[match(names(cluster3), rankTaxon$ID), ]
+sort(table(cluster3Tax$Genus), decreasing = T)
+# only 5 no filter
+cluster3Tax <- cluster3Tax[cluster3Tax$Genus == "g__Enterobacter" &
+                             !str_detect(cluster3Tax$Species, "uncultured"), ]
+cluster3 <- cluster3[cluster3Tax$ID]
+
+# taxonomy of the 4th
+cluster4 <- ENclusterSeq[[names(clusterSize[4])]]
+cluster4 <- unique(cluster4)
+cluster4Tax <- rankTaxon[match(names(cluster4), rankTaxon$ID), ]
+sort(table(cluster4Tax$Genus), decreasing = T)
+# filter 10 g__Citrobacter sequence
+cluster4Tax <- cluster4Tax[cluster4Tax$Genus == "g__Citrobacter" &
+                             !str_detect(cluster4Tax$Species, "uncultured"), ]
+set.seed(9527)
+cluster4Tax <- cluster4Tax[sample(1:nrow(cluster4Tax), 10), ]
+cluster4 <- cluster4[cluster4Tax$ID]
+
+# taxonomy of the 5th
+cluster5 <- ENclusterSeq[[names(clusterSize[5])]]
+cluster5 <- unique(cluster5)
+cluster5Tax <- rankTaxon[match(names(cluster5), rankTaxon$ID), ]
+# it is still g__Klebsiella g__Enterobacter  g__Citrobacter
+sort(table(cluster5Tax$Genus), decreasing = T)
+
+EnSeq97<-c(cluster1,cluster2,cluster3,cluster4)
+En97<-rbind(cluster1Tax,cluster2Tax,cluster3Tax,cluster4Tax)
+saveRDS(En97,"../temp/En97.rds")
+saveRDS(EnSeq97,"../temp/EnSeq97.rds")
 ```
 

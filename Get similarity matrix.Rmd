@@ -13,8 +13,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(Biostrings)
-En <- readRDS("../temp/En.rds")
-EnSeq <- readRDS("../temp/EnSeq.rds")
+En <- readRDS("../temp/En97.rds")
+EnSeq <- readRDS("../temp/EnSeq97.rds")
 ```
 
 # read E. coli sequence

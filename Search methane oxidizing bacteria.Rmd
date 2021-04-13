@@ -1,0 +1,78 @@
+---
+title: "Search methane oxidizing bacteria"
+author: "xyz"
+date: "2021/4/13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# read reference methane oxidizing bacteria taxonomy
+
+```{r}
+library(tidyverse)
+library(Biostrings)
+tax <- read.table("../data/methane-oxidizing bacteria.tax")
+rankTaxon <- data.frame(Taxon = tax$V2)
+rankTaxon <-
+  separate(rankTaxon, Taxon, sep = ";", into = as.character(1:7))
+colnames(rankTaxon) <-
+  c("Kingdom",
+    "Phylum",
+    "Class",
+    "Order",
+    "Family",
+    "Genus",
+    "Species")
+rankTaxon <- cbind(id = tax$V1,
+                   rankTaxon)
+seq <- readDNAStringSet("../data/20190814_MOB_16S.fasta")
+# sequences are more than taxonomies
+length(seq) == nrow(tax)
+
+tax2 <- str_split(names(seq), " ", simplify = T)
+tax2 <- as.data.frame(tax2)
+tax2$V2 <- paste0(tax2$V2, tax2$V3)
+tax2 <- tax2[, -3]
+rankTaxon2 <- data.frame(Taxon = tax2$V2)
+rankTaxon2 <-
+  separate(rankTaxon2, Taxon, sep = ";", into = as.character(1:7))
+colnames(rankTaxon2) <-
+  c("Kingdom",
+    "Phylum",
+    "Class",
+    "Order",
+    "Family",
+    "Genus",
+    "Species")
+rankTaxon2 <- cbind(id = tax2$V1,
+                    rankTaxon2)
+rankTaxon2[rankTaxon2 == ""] <- NA
+# all ids in taxonomy are in sequence names
+# tax from the methane-oxidizing bacteria.tax is as the criterion
+sum(rankTaxon$id %in% rankTaxon2$id)
+diffTaxon <- rankTaxon2[!(rankTaxon2$id %in% rankTaxon$id), ]
+```
+
+# filter methane oxidizing bacteria from asv table
+
+```{r}
+refGenus<-unique(rankTaxon$Genus)
+refGenus<-refGenus[!is.na(refGenus)]
+refGenus<-refGenus[refGenus!=""]
+refGenus<-paste0("g__",refGenus)
+asv<-read.csv("../table/ASVwithTaxByNaive_bayesSortByOneMore.csv")
+asv[is.na(asv)]<-""
+# Methylococcales comprise the type I methanotrophs, 
+# in contrast to the Methylocystaceae or type II methanotrophs
+MOB<-asv[((asv$Genus %in% refGenus) | (asv$Order=="o__Methylococcales")),]
+sum(MOB$totalCount)
+# 0.0446696 %
+sum(MOB$totalPercent)
+sort(table(MOB$Genus),decreasing = T)
+sort(table(MOB$Family),decreasing = T)
+sort(table(MOB$Order),decreasing = T)
+```
+

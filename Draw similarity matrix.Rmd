@@ -1,0 +1,225 @@
+---
+title: "Draw similarity matrix"
+author: "xyz"
+date: "2021/4/13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### get matrix and annotation DF
+
+```{r}
+library(tidyverse)
+df4 <-
+  read.csv("../table/E coli Nucleotide Similarity Matrix by blast.csv")
+rownames(df4) <- df4$X
+df4 <- df4[, -1]
+
+df2 <-
+  read.csv("../table/All Enterobacteriaceae Nucleotide Similarity by blast.csv")
+distToStandard <- df2[df2$sseqid == "ASV2", 1:3]
+distToStandard <- distToStandard[,-2]
+colnames(distToStandard) <- c("Taxa", "Similarity")
+annotationDf <-
+  read.csv("../temp/allEn.Annotation.WithSimilarity.csv")
+colnames(annotationDf)[5] <- "SimilarityLevel"
+annotationDf <-
+  left_join(annotationDf, distToStandard, by = c("Taxa" = "Taxa"))
+annotationDf$SimilarityLevel <- cut(annotationDf$Similarity,
+                                    breaks = c(0, 80, 82.5, 85, 87.5, 90, 92.5, 95, 97.5, 100))
+```
+
+### sort by distance to standaer E. coli sequence
+
+```{r}
+ix <- rownames(df4)
+annotationDf2<-annotationDf[annotationDf$Taxa %in% ix,]
+# sort by distance to standaer E. coli sequence
+annotationDf2<-arrange(annotationDf2,desc(Similarity),desc(Count))
+# move the standard sequence to the fisrt one
+annotationDf2<-rbind(annotationDf2[annotationDf2$Taxa=="ASV2",],
+                     annotationDf2[annotationDf2$Taxa!="ASV2",])
+ix2<-annotationDf2$Taxa
+seqIdentity2 <- df4[ix2, ix2]
+```
+
+### draw the distribution of distance to standard sequence of ecoli
+
+```{r}
+p <-
+  ggplot(data = data.frame(y = annotationDf2$Similarity,
+                           x=rep("",nrow(annotationDf2))),
+         mapping = aes(y = y,x=x)) +
+  geom_violin() +
+  geom_boxplot(width = .1)+
+  ylab("Similarity to E. coli W (%)") +
+  xlab("") +
+  theme(text = element_text(size = 20))
+p+ggsave(
+    "../figure/Similarity to standard sequence of ecoli.pdf",
+    width = 6,
+    height = 8,
+  )
+# 91.176
+median(annotationDf2$Similarity)
+```
+
+### draw the distribution of Identity to standard sequence of other species
+
+```{r}
+library(ggpubr)
+df3<-df2[df2$qseqid=="ASV2" & df2$sseqid!="ASV2",]
+df3 <- data.frame(
+  Taxa = df3$sseqid,
+  IdentityToStandard = df3$pident,
+  Source = ifelse(str_detect(df3$sseqid, "ASV"), "Internal reference", "Other species")
+)
+p3 <-
+  ggplot(data = df3,
+         mapping = aes(y = IdentityToStandard, x = Source, fill = Source)) +
+  # geom_violin() +
+  geom_boxplot() +
+  stat_compare_means(
+    label = "p.signif",
+    method = "wilcox.test",
+    comparisons = list(c("Internal reference", "Other species")),
+    size = 8
+  ) +
+  ylab("Similarity to E. coli W") +
+  xlab("") +
+  theme(text = element_text(size = 20), legend.position = "none")
+p3 + ggsave(
+  "../figure/Identity to standard sequence of ecoli and other species.pdf",
+  width = 6,
+  height = 8,
+)
+# W = 0, p-value = 9.319e-09
+wilcox.test(IdentityToStandard ~ Source, data = df3)
+# 95.361
+median(df3[df3$Source == "Other species", "IdentityToStandard"])
+# 90.9335
+median(df3[df3$Source == "Internal reference", "IdentityToStandard"])
+```
+
+### matrix heatmap with abundance
+
+```{r}
+library(ComplexHeatmap)
+pdf("../figure/Nucleotide identity matrix of Ecoli.pdf", 13, 9)
+row_ha <-
+  rowAnnotation(Abundance = anno_barplot(log10(annotationDf2$Count),
+                                        width = unit(9, "cm")))
+# Exp87 is similar to standard but dissimilar to others  
+Heatmap(
+  seqIdentity2,
+  name = "Similarity",
+  row_names_side = "left",
+  show_column_names = T,
+  column_names_side = "top",
+  show_column_dend = F,
+  show_row_dend = F,
+  cluster_rows = F,
+  cluster_columns = F,
+  row_names_gp = gpar(fontsize = 8),
+  column_names_gp = gpar(fontsize = 8),
+  row_labels = c("E. coli W", annotationDf2$Taxa[-1]),
+  column_labels = c("E. coli W", annotationDf2$Taxa[-1]),
+  right_annotation = row_ha
+)
+dev.off()
+```
+
+
+#### draw by ggplot
+
+```{r}
+library(patchwork)
+library(viridis)
+seqIdentityDf <- seqIdentity2
+# get upper triangel matrix
+seqIdentityDf[lower.tri(seqIdentityDf)] <- NA
+seqIdentityDf <-
+  cbind(SeqY = rownames(seqIdentityDf), seqIdentityDf)
+seqIdentityDf <-
+  pivot_longer(seqIdentityDf,-SeqY,
+               names_to = "SeqX",
+               values_to = "Identity")
+seqIdentityDf <- seqIdentityDf[!is.na(seqIdentityDf$Identity),]
+seqIdentityDf$SeqY <- factor(seqIdentityDf$SeqY, levels = rev(ix2))
+seqIdentityDf$SeqX <- factor(seqIdentityDf$SeqX, levels = ix2)
+p <-
+  ggplot(data = seqIdentityDf, mapping = aes(x = SeqX, y = SeqY)) +
+  geom_tile(aes(fill = Identity)) +
+  # add space between margin and tile to show the first label
+  scale_x_discrete(expand=expansion(mult = c(0.15, 0)))+
+  theme(
+    text = element_text(size = 20),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    legend.position = c(0.4, 0.2),
+    # decrease margin of plot
+    plot.margin = unit(c(0.01, 0.01, 0.01, 0.01), "cm")
+  ) +
+  # change lebel to diagonal
+  geom_text(aes(x,y,label=label),data=data.frame(x=ix2,y=ix2,label=ix2),hjust=1.5)+
+  scale_fill_gradient2(
+    name = "Pairwise similarity (%)",
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = (max(seqIdentityDf$Identity) + min(seqIdentityDf$Identity)) /
+      2
+  )
+
+dfAbundance <- annotationDf2[, c("Taxa", "Count", "SimilarityLevel")]
+dfAbundance$Taxa <- factor(dfAbundance$Taxa, levels = rev(ix2))
+dfAbundance$SimilarityLevel <-
+  factor(dfAbundance$SimilarityLevel,
+         levels = rev(levels(dfAbundance$SimilarityLevel)))
+p2 <- ggplot(dfAbundance, aes(x = Count, y = Taxa)) +
+  geom_bar(
+    stat = "identity",
+    position = "dodge",
+    width = 0.8,
+    aes(fill = SimilarityLevel)
+  ) +
+  scale_fill_viridis(discrete = TRUE,option="B",na.translate = F)+
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x)
+      10 ^ x),
+    labels = scales::trans_format("log10", scales::math_format(10 ^ .x)),
+    # remove gap between axis and bar
+    expand = c(0, 0)
+  ) +
+  labs(fill = 'Similarity to reference (%)') +
+  theme(
+    text = element_text(size = 20),
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    plot.margin = unit(c(0.01, 0.01, 0.01, 0.01), "cm"),
+    legend.position = c(0.65, 0.2)
+  ) +
+  # add x axis
+  geom_hline(yintercept = 0.5)
+
+
+p + p2 +
+  ggsave(
+    "../figure/Nucleotide Identity matrix with abundance.pdf",
+    width = 16,
+    height = 8,
+  )
+```

@@ -55,6 +55,7 @@ En <- En[En$Genus %in% c(
   "g__Cronobacter"
 ), ]
 EnSeq <- silva[match(En$ID, names(silva))]
+saveRDS(En,"../temp/EnWithoutEcoliTax.rds")
 writeXStringSet(EnSeq, "../temp/EnWithoutEcoli.fasta", width = 10000)
 ```
 
@@ -95,7 +96,7 @@ set.seed(9527)
 cluster1Tax <- cluster1Tax[sample(1:nrow(cluster1Tax), 10), ]
 cluster1 <- cluster1[cluster1Tax$ID]
 
-# taxonomy of the 2nt
+# taxonomy of the 2nd
 cluster2 <- ENclusterSeq[[names(clusterSize[2])]]
 cluster2 <- unique(cluster2)
 cluster2Tax <- rankTaxon[match(names(cluster2), rankTaxon$ID), ]

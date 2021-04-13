@@ -37,12 +37,13 @@ seqkit stats ../temp/allEn.aligned.fasta
 # trimal -in ../temp/allEn.aligned.fasta -out ../temp/allEn.aligned.trimed.fasta -gt 0.20 -cons 40
 # file                            format  type  num_seqs  sum_len  min_len  avg_len  max_len
 # allEnLess.aligned.trimed.fasta  FASTA   DNA         51   21,624      424      424      424
-seqkit stats ../temp/allEn.aligned.trimed.fasta
+# seqkit stats ../temp/allEn.aligned.fasta
 # check all sequence is unique after trim
-seqkit rmdup ../temp/allEn.aligned.trimed.fasta -s -i -o ../temp/unique.fasta  \
+seqkit rmdup ../temp/allEn.aligned.fasta -s -i -o ../temp/unique.fasta  \
   -d ../temp/duplicated.fasta -D ../temp/duplicated.detail.txt
+rm -r ../temp/iqtree
 mkdir ../temp/iqtree
-iqtree -s ../temp/allEn.aligned.trimed.fasta -bb 1000 -redo -alrt 1000 \
+iqtree -s ../temp/allEn.aligned.fasta -bb 1000 -redo -alrt 1000 \
   -m MFP -nt AUTO -pre ../temp/iqtree/allEn -T AUTO
 ```
 
@@ -112,53 +113,7 @@ p2 <- p2 %<+% tempDf +
               align = T,size=3)
 # check which Clade to collapse
 p2+ ggsave(
-  "Check Collapsing Clade.pdf",
-  width = 8,
-  height = 7
-)
-```
-
-```{r}
-p2 <- ggtree(tree, layout = "rectangular")
-p2 <- p2 %<+% tempDf
-  # geom_tippoint(aes(color = Source), size = 2, alpha = 1) +
-  # geom_nodelab(aes(label = node),
-  #              size = 4,
-  #              color = "black",
-  #              hjust = 0)
-# geom_tiplab(aes(label = Species),
-#             color = 'black',
-#             offset = 0.005,
-#             align = T,size=1.5)
-# check which Clade to collapse
-p2
-p2 <-
-  collapse(p2, 93, 'min') %>% 
-  collapse(64, 'min') %>% 
-  collapse(61, 'min') %>% 
-  collapse(90, 'min')
-# p2+geom_hilight(node=90,fill="red")
-p2<-p2+geom_cladelab(node=64, label="Serratia",hjust=-1.2)
-p2<-p2+geom_cladelab(node=61, label="Serratia",hjust=-2.7)
-p2<-p2+geom_cladelab(node=90, label="Serratia",hjust=-0.8)
-p2<-p2+geom_cladelab(node=93, label="Salmonella",hjust=-0.8)
-p2<-p2+geom_cladelab(node=69, label="Escherichia coli",hjust=0)
-p2<-p2+xlim(0, 0.4)
-segmentDf <- data.frame(x1 = 0.12,
-                        x2 = 0.12,
-                        y1 = 1,
-                        y2 = 7)
-# p2<-p2 + geom_segment(aes(
-#   x = x1,
-#   y = y1,
-#   xend = x2,
-#   yend = y2,
-# ), data = segmentDf)
-p2<-p2+annotate("segment", x=0.12,xend =0.12, y=1, yend = 7)
-p2<-p2+annotate("text", x=0.15, y=4, label= "Pantoea")
-p2<-p2+annotate("text", x=0.11, y=29, label= "Serratia")
-p2 + ggsave(
-  "Collapsing Clade.pdf",
+  "../temp/Check Collapsing Clade.pdf",
   width = 8,
   height = 7
 )
@@ -173,46 +128,31 @@ p2 <- p2 + geom_fruit(
   pwidth = 0.38,
   orientation = "y",
   stat = "identity",
-  offset = 0.02
+  offset = 0.05
 ) + 
   labs(fill = 'Similarity (%)') + 
   scale_fill_viridis(discrete = TRUE,option="B",na.translate = F)+
-  theme(legend.justification = c(1, 0), legend.position = c(0.77, 0.23))
+  theme(legend.justification = c(1, 0), legend.position = c(0.85, 0.7))
 p2 <-
-  collapse(p2, 93, 'min') %>% 
-  collapse(64, 'min') %>% 
-  collapse(61, 'min') %>% 
-  collapse(90, 'min')
-# p2+geom_hilight(node=90,fill="red")
+  collapse(p2, 87, 'max') %>% 
+  collapse(78, 'max')
+
 # add genera name manually
-p2<-p2+geom_cladelab(node=64, label="Serratia",hjust=-1.2)
-p2<-p2+geom_cladelab(node=61, label="Serratia",hjust=-2.7)
-p2<-p2+geom_cladelab(node=90, label="Serratia",hjust=-0.8)
-p2<-p2+geom_cladelab(node=93, label="Salmonella",hjust=-0.8)
-p2<-p2+xlim(0, 0.4)
-segmentDf <- data.frame(x1 = 0.12,
-                        x2 = 0.12,
-                        y1 = 1,
-                        y2 = 7)
-# p2<-p2 + geom_segment(aes(
-#   x = x1,
-#   y = y1,
-#   xend = x2,
-#   yend = y2,
-# ), data = segmentDf)
-p2<-p2+annotate("segment", x=0.12,xend =0.12, y=1, yend = 7)
-p2<-p2+annotate("text", x=0.15, y=4, label= "Pantoea")
-p2<-p2+annotate("segment", x=0.263,xend =0.263, y=30, yend = 51)
-p2<-p2+annotate("text", x=0.32, y=43, label= "Escherichia coli")
-p2<-p2+annotate("text", x=0.11, y=29, label= "Serratia")
+p2<-p2+geom_cladelab(node=87, label="Citrobacter",hjust=-0.8,vjust=-2)
+p2<-p2+geom_cladelab(node=78, label="Klebsiella",hjust=-0.8,vjust=-2)
+p2<-p2+annotate("segment", x=0.06,xend =0.06, y=20, yend = 29)
+p2<-p2+annotate("text", x=0.09, y=25, label= "Salmonella")
+p2<-p2+annotate("segment", x=0.235,xend =0.235, y=1, yend = 19)
+p2<-p2+annotate("text", x=0.3, y=9, label= "Escherichia coli")
 # add bootstrap score in the end 
 p2<-p2+geom_nodelab(size = 2,
                color = "orange",
                hjust = 0)
+p2<-p2+xlim(0, 0.32)
 p2 + ggsave(
-  "Collapsing Clade with abundance.pdf",
+  "../figure/Collapsing Clade with abundance.pdf",
   width = 8,
-  height = 7
+  height = 6
 )
 ```
 

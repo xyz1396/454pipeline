@@ -1,0 +1,120 @@
+---
+title: "get Enterobacteriaceae relatives from cluster centroid"
+author: "xyz"
+date: "2021/4/12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# read each cluster
+
+```{r}
+clusterPath <- "../temp/EnWithoutEcoli97Cluster/"
+ENcluster <- dir(clusterPath)
+ENclusterSeq <- list()
+for (i in ENcluster) {
+  ENclusterSeq[[i]] <- readDNAStringSet(paste0(clusterPath, i))
+}
+# get the top 5 biggest clusters
+clusterSize <- sort(lengths(ENclusterSeq), decreasing = T)[1:5]
+(clusterName<-names(clusterSize))
+# EnWithoutEcoli97Cluster.list116 
+# EnWithoutEcoli97Cluster.list206
+# EnWithoutEcoli97Cluster.list102
+# EnWithoutEcoli97Cluster.list304
+# EnWithoutEcoli97Cluster.list316
+```
+
+[use DECIPHER to cluster OTU](https://github.com/benjjneb/dada2/issues/947)
+
+# get 99% centroid of the top 5 cluster
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+
+clusterPath='../temp/EnWithoutEcoli97Cluster/'
+
+vsearch --cluster_fast ${clusterPath}EnWithoutEcoli97Cluster.list116 \
+  --id 0.98 \
+  --centroids ${clusterPath}EnWithoutEcoli97Cluster.list116.centroids.fasta \
+  --clusterout_id 
+  
+vsearch --cluster_fast ${clusterPath}EnWithoutEcoli97Cluster.list206 \
+  --id 0.98 \
+  --centroids ${clusterPath}EnWithoutEcoli97Cluster.list206.centroids.fasta \
+  --clusterout_id 
+
+# only get 2  
+vsearch --cluster_fast ${clusterPath}EnWithoutEcoli97Cluster.list102 \
+  --id 0.98 \
+  --centroids ${clusterPath}EnWithoutEcoli97Cluster.list102.centroids.fasta \
+  --clusterout_id   
+  
+vsearch --cluster_fast ${clusterPath}EnWithoutEcoli97Cluster.list304 \
+  --id 0.98 \
+  --centroids ${clusterPath}EnWithoutEcoli97Cluster.list304.centroids.fasta \
+  --clusterout_id   
+  
+vsearch --cluster_fast ${clusterPath}EnWithoutEcoli97Cluster.list316 \
+  --id 0.98 \
+  --centroids ${clusterPath}EnWithoutEcoli97Cluster.list316.centroids.fasta \
+  --clusterout_id   
+  
+vsearch --cluster_fast ${clusterPath}EnWithoutEcoli97Cluster.list157 \
+  --id 0.98 \
+  --centroids ${clusterPath}EnWithoutEcoli97Cluster.list157.centroids.fasta \
+  --clusterout_id  
+```
+
+```{r}
+En<-readRDS("../temp/EnWithoutEcoliTax.rds")
+clusterCentroidPath <- paste0(clusterPath, clusterName, ".centroids.fasta")
+
+
+# taxonomy of the 1st
+cluster1 <- readDNAStringSet(clusterCentroidPath[1])
+cluster1Tax <- En[match(names(cluster1), En$ID), ]
+sort(table(cluster1Tax$Genus), decreasing = T)
+# filter 10 g__Salmonella sequence
+cluster1Tax <-
+  cluster1Tax[cluster1Tax$Genus == "g__Salmonella" &
+                ! str_detect(cluster1Tax$Species, "uncultured"),]
+set.seed(9527)
+cluster1Tax <- cluster1Tax[sample(1:nrow(cluster1Tax), 10), ]
+cluster1 <- cluster1[cluster1Tax$ID]
+
+# taxonomy of the 2nd
+cluster2 <- readDNAStringSet(clusterCentroidPath[2])
+cluster2Tax <- En[match(names(cluster2), En$ID), ]
+sort(table(cluster2Tax$Genus), decreasing = T)
+# filter 10 g__Klebsiella sequence
+cluster2Tax <- cluster2Tax[cluster2Tax$Genus == "g__Klebsiella" &
+                             !str_detect(cluster2Tax$Species, "uncultured"), ]
+set.seed(9527)
+cluster2Tax <- cluster2Tax[sample(1:nrow(cluster2Tax), 10), ]
+cluster2 <- cluster2[cluster2Tax$ID]
+
+# taxonomy of the 4th
+cluster4 <- readDNAStringSet(clusterCentroidPath[4])
+cluster4Tax <- En[match(names(cluster4), En$ID), ]
+sort(table(cluster4Tax$Genus), decreasing = T)
+# filter 10 g__Citrobacter sequence
+cluster4Tax <- cluster4Tax[cluster4Tax$Genus == "g__Citrobacter", ]
+set.seed(9527)
+cluster4Tax <- cluster4Tax[sample(1:nrow(cluster4Tax), 10), ]
+cluster4 <- cluster4[cluster4Tax$ID]
+
+EnSeq98<-c(cluster1,cluster2,cluster4)
+En98<-rbind(cluster1Tax,cluster2Tax,cluster4Tax)
+saveRDS(En98,"../temp/En98.rds")
+saveRDS(EnSeq98,"../temp/EnSeq98.rds")
+```
+
+
+
+
+

@@ -74,5 +74,90 @@ sum(MOB$totalPercent)
 sort(table(MOB$Genus),decreasing = T)
 sort(table(MOB$Family),decreasing = T)
 sort(table(MOB$Order),decreasing = T)
+write.csv(MOB,"../table/methane oxidizing bacteria ASV.csv",row.names = F)
+```
+
+# extract MOB sequence in sample
+
+```{r}
+allReads<-readDNAStringSet("../temp/fastq370.rep-seqs.fasta/dna-sequences.fasta")
+MOBReads<-allReads[MOB$ASV.ID]
+names(MOBReads)<-MOB$ASV.IX
+writeXStringSet(MOBReads,"../temp/methane oxidizing bacteria ASV.fasta",width=20000)
+```
+
+# build tree
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+muscle -in '../temp/methane oxidizing bacteria ASV.fasta' -out ../temp/MOB.aligned.fasta
+# file                       format  type  num_seqs  sum_len  min_len  avg_len  max_len
+# MOB.aligned.fasta  FASTA   DNA         50   18,900      378      378      378
+seqkit stats ../temp/MOB.aligned.fasta
+# trimal -in ../temp/MOB.aligned.fasta -out ../temp/MOB.aligned.trimed.fasta -gt 0.20 -cons 40
+# file                            format  type  num_seqs  sum_len  min_len  avg_len  max_len
+# MOB.aligned.trimed.fasta  FASTA   DNA         51   21,624      424      424      424
+# seqkit stats ../temp/MOB.aligned.trimed.fasta
+# check all sequence is unique after trim
+seqkit rmdup ../temp/MOB.aligned.fasta -s -i -o ../temp/unique.fasta  \
+  -d ../temp/duplicated.fasta -D ../temp/duplicated.detail.txt
+rm -r ../temp/MOBiqtree
+mkdir ../temp/MOBiqtree
+iqtree -s ../temp/MOB.aligned.fasta -bb 1000 -redo -alrt 1000 \
+  -m MFP -nt AUTO -pre ../temp/MOBiqtree/MOB -T AUTO
+```
+
+# get annotation dataframe
+
+```{r}
+annotationDf <-
+  MOB[, c("Family", "Genus", "Species", "totalCount", "ASV.IX")]
+annotationDf$Family<-str_sub(annotationDf$Family, 4)
+annotationDf$Genus<-str_sub(annotationDf$Genus, 4)
+annotationDf$Species<-str_sub(annotationDf$Species, 4)
+annotationDf$Family_Genus <-
+  paste(annotationDf$Family,annotationDf$Genus)
+```
+
+# draw tree
+
+```{r}
+library(ggtree)
+library(ggtreeExtra)
+
+tree <- read.tree("../temp/MOBiqtree/MOB.contree")
+tempDf <- annotationDf
+tempDf$Count <- log10(annotationDf$totalCount)
+tempDf$Taxonomy <- as.factor(annotationDf$Family_Genus)
+tempDf<-cbind(Taxa=tempDf$ASV.IX,tempDf)
+p <- ggtree(tree, layout = "rectangular"
+            # branch.length='none'
+            )
+p <- p %<+% tempDf +
+  geom_tippoint(aes(x=x+0.05,shape = Taxonomy), size = 2, alpha = 1) +
+  # let it support more shape
+  scale_shape_manual(values=1:nlevels(tempDf$Taxonomy))+
+  geom_nodelab(size = 2, color = "orange",hjust = 0)
+
+p <- p + geom_fruit(
+  geom = geom_bar,
+  mapping = aes(y = Taxa, x = totalCount,fill=Family),
+  pwidth = 0.38,
+  orientation = "y",
+  stat = "identity",
+  offset = 0.08,
+  axis.params=list(axis="x",text.size=2,vjust=1.5)
+)
+
+# remove Family in legend title
+p<-p+labs(fill = NULL)
+
+p<-p+annotate("text", x=1.3, y=-2, label= "Count",size=3)
+p + ggsave(
+  "../figure/methane oxidizing bacteria by IQ-TREE.pdf",
+  width = 8,
+  height = 6
+)
 ```
 

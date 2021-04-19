@@ -31,13 +31,16 @@ write.csv(annotationDf,"../temp/allEn.Annotation.WithSimilarity.csv",row.names =
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate qiime2
 muscle -in ../temp/allEn.fasta -out ../temp/allEn.aligned.fasta
-# file                     format  type  num_seqs  sum_len  min_len  avg_len  max_len
-# allEnLess.aligned.fasta  FASTA   DNA         51  108,120    2,120    2,120    2,120
+# file                 format  type  num_seqs  sum_len  min_len  avg_len  max_len
+# allEn.aligned.fasta  FASTA   DNA         49   19,845      405      405      405
 seqkit stats ../temp/allEn.aligned.fasta
-# trimal -in ../temp/allEn.aligned.fasta -out ../temp/allEn.aligned.trimed.fasta -gt 0.20 -cons 40
-# file                            format  type  num_seqs  sum_len  min_len  avg_len  max_len
-# allEnLess.aligned.trimed.fasta  FASTA   DNA         51   21,624      424      424      424
-# seqkit stats ../temp/allEn.aligned.fasta
+# trimal -in ../temp/allEn.aligned.fasta \
+#   -out ../temp/allEn.aligned.trimed.fasta -selectcols { 399-404 }
+# trimal -in ../temp/allEn.aligned.trimed.fasta \
+#   -out ../temp/allEn.aligned.trimed.fasta -gt 0.20 -cons 40
+# file                        format  type  num_seqs  sum_len  min_len  avg_len  max_len
+# allEn.aligned.trimed.fasta  FASTA   DNA         49   18,179      371      371      371
+# seqkit stats ../temp/allEn.aligned.trimed.fasta
 # check all sequence is unique after trim
 seqkit rmdup ../temp/allEn.aligned.fasta -s -i -o ../temp/unique.fasta  \
   -d ../temp/duplicated.fasta -D ../temp/duplicated.detail.txt

@@ -1,0 +1,84 @@
+---
+title: "draw methane oxidizing bacteria tree with standard sequence"
+author: "xyz"
+date: "2021/4/20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# get methane oxidizing bacteria sequences in sample
+
+```{r}
+library(Biostrings)
+MOB <- read.csv("../table/methane oxidizing bacteria ASV.csv")
+MOBReads <-
+  readDNAStringSet("../temp/methane oxidizing bacteria ASV.fasta")
+annotationDf <-
+  MOB[, c("Family", "Genus", "Species", "totalCount", "ASV.IX")]
+annotationDf$Family <- str_sub(annotationDf$Family, 4)
+annotationDf$Genus <- str_sub(annotationDf$Genus, 4)
+annotationDf$Species <- str_sub(annotationDf$Species, 4)
+annotationDf$Family_Genus <-
+  paste(annotationDf$Family, annotationDf$Genus)
+write.csv(annotationDf,
+          "../temp/methane oxidizing bacteria ASV annotation.csv",
+          row.names = F)
+```
+
+# filter the sequnce with the highest count in each genus
+
+```{r}
+library(tidyverse)
+annotationTopDf <- arrange(annotationDf, Family_Genus, desc(totalCount))
+annotationTopDf <- distinct(annotationTopDf, Family_Genus, .keep_all =
+                              T)
+annotationTopSeq <- MOBReads[annotationTopDf$ASV.IX]
+write.csv(
+  annotationDf,
+  "../temp/methane oxidizing bacteria ASV genus top annotation.csv",
+  row.names = F
+)
+writeXStringSet(annotationTopSeq,
+                "../temp/methane oxidizing bacteria ASV genus top.fasta")
+```
+
+# blast methane oxidizing bacteria sequences to silva DB
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+
+blastn -query "../temp/methane oxidizing bacteria ASV genus top.fasta" \
+  -subject "../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs_515F_907R/dna-sequences.fasta"\
+  -outfmt 6 \
+  -evalue 1e-5 \
+  -perc_identity 80 \
+  -task blastn \
+  -max_target_seqs 100000 \
+  -out ../temp/MOB2Silva138.txt
+```
+
+```{r}
+blastColnames <-
+  c(
+    "qseqid",
+    "sseqid",
+    "pident",
+    "length",
+    "mismatch",
+    "gapopen",
+    "qstart",
+    "qend",
+    "sstart",
+    "send",
+    "evalue",
+    "bitscore"
+  )
+blastToReads<-read.delim("../temp/MOB2Silva138.txt",header = F)
+```
+
+
+

@@ -61,8 +61,9 @@ blastn -query "../temp/methane oxidizing bacteria ASV genus top.fasta" \
   -out ../temp/MOB2Silva138.txt
 ```
 
-```{r}
-blastColnames <-
+```{r "get the best match"}
+blastToReads <- read.delim("../temp/MOB2Silva138.txt", header = F)
+colnames(blastToReads) <-
   c(
     "qseqid",
     "sseqid",
@@ -77,8 +78,122 @@ blastColnames <-
     "evalue",
     "bitscore"
   )
-blastToReads<-read.delim("../temp/MOB2Silva138.txt",header = F)
+bestMatch <- blastToReads[blastToReads$length >= 365, ]
+bestMatch <- arrange(bestMatch, desc(bitscore))
+bestMatch <- distinct(bestMatch, qseqid, .keep_all = T)
 ```
 
+# get the sequence and annotation of the best match 
+
+```{r}
+silva <-
+  readDNAStringSet(
+    "../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs_515F_907R/dna-sequences.fasta"
+  )
+silvaTax <-
+  read.table(
+    "../../2021xiongyiAnalysis/db/SILVA_138/silva-138-99-seqs_515F_907R/taxonomy.tsv",
+    sep = "\t",
+    header = T
+  )
+colnames(silvaTax) <- c("ID", "TaxonFull")
+rankTaxon <- data.frame(Taxon = silvaTax$TaxonFull)
+rankTaxon <-
+  separate(rankTaxon, Taxon, sep = "; ", into = as.character(1:7))
+colnames(rankTaxon) <-
+  c("Kingdom",
+    "Phylum",
+    "Class",
+    "Order",
+    "Family",
+    "Genus",
+    "Species")
+rankTaxon <- cbind(silvaTax, rankTaxon)
+write.csv(rankTaxon,
+          "../temp/silva-138-99-seqs_515F_907R_RankTaxon.csv",
+          row.names = F)
+bestMatchSilvaTax <- left_join(bestMatch, rankTaxon, c("sseqid" = "ID"))
+write.csv(
+  bestMatchSilvaTax,
+  "../table/methane oxidizing bacteria asv best match with SilvaTax.csv",
+  row.names = F
+)
+
+bestMatchAnnotationDf<-left_join(bestMatch[,c("sseqid","qseqid")],annotationTopDf,c("qseqid" = "ASV.IX"))
+bestMatchAnnotationDf<-bestMatchAnnotationDf[,-2]
+colnames(bestMatchAnnotationDf)[1]<-"ASV.IX"
+bestMatchAnnotationDf<-bestMatchAnnotationDf[,colnames(annotationTopDf)]
+bestMatchAnnotationDf$totalCount<-0
+# row 9 and row 10's ID is same, remove 9
+bestMatchAnnotationDf<-bestMatchAnnotationDf[-9,]
+bestMatchReads<-silva[bestMatchAnnotationDf$ASV.IX]
 
 
+allMOBreads<-c(MOBReads,bestMatchReads)
+allMOBreads<-narrow(allMOBreads,1,370)
+allMOBannotationDf<-rbind(annotationDf,bestMatchAnnotationDf)
+write.csv(allMOBannotationDf,"../temp/allMOBannotationDf.csv",row.names = F)
+writeXStringSet(allMOBreads,"../temp/allMOB.fasta")
+```
+
+# build tree
+
+```{bash, echo=F}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+muscle -in '../temp/allMOB.fasta' -out ../temp/allMOB.aligned.fasta
+# file                       format  type  num_seqs  sum_len  min_len  avg_len  max_len
+# MOB.aligned.fasta  FASTA   DNA         50   18,900      378      378      378
+seqkit stats ../temp/allMOB.aligned.fasta
+# trimal -in ../temp/MOB.aligned.fasta -out ../temp/MOB.aligned.trimed.fasta -gt 0.20 -cons 40
+# file                            format  type  num_seqs  sum_len  min_len  avg_len  max_len
+# MOB.aligned.trimed.fasta  FASTA   DNA         51   21,624      424      424      424
+# seqkit stats ../temp/MOB.aligned.trimed.fasta
+# check all sequence is unique after trim
+seqkit rmdup ../temp/allMOB.aligned.fasta -s -i -o ../temp/unique.fasta  \
+  -d ../temp/duplicated.fasta -D ../temp/duplicated.detail.txt
+rm -r ../temp/allMOBiqtree
+mkdir ../temp/allMOBiqtree
+iqtree -s ../temp/allMOB.aligned.fasta -bb 1000 -redo -alrt 1000 \
+  -m MFP -nt AUTO -pre ../temp/allMOBiqtree/allMOB -T AUTO
+```
+
+# draw tree
+
+```{r}
+library(ggtree)
+library(ggtreeExtra)
+
+tree <- read.tree("../temp/allMOBiqtree/allMOB.contree")
+tempDf <- allMOBannotationDf
+tempDf$Taxonomy <- as.factor(tempDf$Family_Genus)
+tempDf<-cbind(Taxa=tempDf$ASV.IX,tempDf)
+p <- ggtree(tree, layout = "rectangular",
+            branch.length='none'
+            )
+p <- p %<+% tempDf +
+  geom_tippoint(aes(x=x+0.4,shape = Taxonomy), size = 2, alpha = 1) +
+  # let it support more shape
+  scale_shape_manual(values=1:nlevels(tempDf$Taxonomy))+
+  geom_nodelab(size = 2, color = "orange",hjust = 0)
+
+p <- p + geom_fruit(
+  geom = geom_bar,
+  mapping = aes(y = Taxa, x = totalCount,fill=Family),
+  pwidth = 0.38,
+  orientation = "y",
+  stat = "identity",
+  offset = 0.08,
+  axis.params=list(axis="x",text.size=2,vjust=1.5)
+)
+
+# remove Family in legend title
+p<-p+labs(fill = NULL)
+
+p<-p+annotate("text", x=22, y=-2, label= "Count",size=3)
+p + ggsave(
+  "../figure/methane oxidizing bacteria with standard sequeces by IQ-TREE.pdf",
+  width = 8,
+  height = 6
+)
+```

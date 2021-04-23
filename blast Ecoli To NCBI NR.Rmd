@@ -1,0 +1,89 @@
+---
+title: "blast Ecoli To NCBI NR"
+author: "xyz"
+date: "2021/4/21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# get Nucleotide Similarity by blast
+
+```{bash}
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate qiime2
+
+# one sequence may match another more than 1 time
+blastn -remote -db nr \
+  -query ../temp/allEn.fasta \
+  -outfmt 6 \
+  -task blastn \
+  -max_target_seqs 100 \
+  -evalue 1e-10 \
+  -perc_identity 95 \
+  -out "../temp/allEnBlast2NR.txt"
+```
+
+it will output error if using nr, so use NCBI 16S database
+
+# analysis json file from NCBI blast
+
+```{r}
+library(rjson)
+blast <-
+  fromJSON(file = "../temp/all En Blast To NCBI 16s results/7ZUZ4KMB016-Alignment (1).json")
+# test
+query1name <-
+  blast$BlastOutput2[[1]]$report$results$search$query_title
+query1hits1 <- blast$BlastOutput2[[1]]$report$results$search$hits[[1]]
+query1hitsDf1 <- data.frame(
+  query = query1name,
+  hitid = query1hits1$description[[1]]$id,
+  accession = query1hits1$description[[1]]$accession,
+  tiltle = query1hits1$description[[1]]$title,
+  taxid = query1hits1$description[[1]]$taxid,
+  sciname = query1hits1$description[[1]]$sciname,
+  bit_score = query1hits1$hsps[[1]]$bit_score,
+  evalue = query1hits1$hsps[[1]]$evalue,
+  identity = query1hits1$hsps[[1]]$identity,
+  align_len = query1hits1$hsps[[1]]$align_len,
+  query_seq = query1hits1$hsps[[1]]$qseq,
+  hit_seq = query1hits1$hsps[[1]]$hseq
+)
+
+blastDf <- data.frame()
+for (query in blast$BlastOutput2) {
+  queryname <- query$report$results$search$query_title
+  for (hit in query$report$results$search$hits) {
+    hitDf <- data.frame(
+      query = queryname,
+      hitid = hit$description[[1]]$id,
+      accession = hit$description[[1]]$accession,
+      tiltle = hit$description[[1]]$title,
+      taxid = hit$description[[1]]$taxid,
+      sciname = hit$description[[1]]$sciname,
+      bit_score = hit$hsps[[1]]$bit_score,
+      evalue = hit$hsps[[1]]$evalue,
+      identity = hit$hsps[[1]]$identity,
+      align_len = hit$hsps[[1]]$align_len,
+      query_seq = hit$hsps[[1]]$qseq,
+      hit_seq = hit$hsps[[1]]$hseq
+    )
+    blastDf <- rbind(blastDf, hitDf)
+  }
+}
+```
+
+# filter result
+
+```{r}
+library(tidyverse)
+blastDf2<-blastDf[str_detect(blastDf$query,"ASV"),]
+blastDf2<-group_by(blastDf2,query)
+blastDf2<-arrange(blastDf2,desc(bit_score))
+blastDf2$identity<-blastDf2$identity/blastDf2$align_len*100
+write.csv(blastDf2,"../table/blast Ecoli To NCBI NR 16S.csv")
+```
+

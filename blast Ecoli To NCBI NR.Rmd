@@ -84,6 +84,16 @@ blastDf2<-blastDf[str_detect(blastDf$query,"ASV"),]
 blastDf2<-group_by(blastDf2,query)
 blastDf2<-arrange(blastDf2,desc(bit_score))
 blastDf2$identity<-blastDf2$identity/blastDf2$align_len*100
-write.csv(blastDf2,"../table/blast Ecoli To NCBI NR 16S.csv")
+write.csv(blastDf2,"../table/blast Ecoli To NCBI NR 16S.csv",row.names = F)
 ```
+
+# filter result for pdf
+
+```{r}
+# get first 10 hit with largest bit score of each query
+blastDf3<-mutate(blastDf2,index=order(bit_score,decreasing = T))
+blastDf3<-blastDf3[blastDf3$index<=10,1:10]
+write.csv(blastDf3,"../table/blast Ecoli To NCBI NR 16S top 10.csv",row.names = F)
+```
+
 

@@ -1,0 +1,125 @@
+---
+title: "ASV rare species analysis"
+author: "xyz"
+date: "2021/4/28"
+output: html_document
+---
+
+### filter rare species
+
+rare (<1% relative abundance) species. Albertsen, M., Hugenholtz, P., Skarshewski, A. et al. Genome sequences of rare, uncultured bacteria obtained by differential coverage binning of multiple metagenomes. Nat Biotechnol 31, 533–538 (2013). https://doi.org/10.1038/nbt.2579
+
+```{r Rare ASV cutoff and ratio}
+ASV <- read.csv("../table/ASVwithTaxByNaive_bayesSortByOneMore.csv")
+totalAbundance <- ASV$totalPercent
+maxAbundance <- max(totalAbundance)
+ASVCount <- nrow(ASV)
+# Rare species cut off is from 0 to 0.1%
+RareSpeciesCutoff <- seq(0, 0.1, length.out = 1000)
+RareSpeciesRatio <-
+  sapply(RareSpeciesCutoff, function(x) {
+    sum(totalAbundance < x) / ASVCount * 100
+  }, simplify = T)
+RareSpeciesDF <-
+  data.frame(RareSpeciesCutoff = RareSpeciesCutoff, RareSpeciesRatio = RareSpeciesRatio)
+
+p <-
+  ggplot(data = RareSpeciesDF,
+         mapping = aes(x = RareSpeciesCutoff, y = RareSpeciesRatio)) + geom_line() +
+  xlab("Rare ASV cutoff (%)") +
+  ylab("Rare ASV ratio (%)") +
+  theme(text = element_text(size = 20))
+
+xintercept <- 0.01
+yintercept <- sum(sum(totalAbundance < 0.01) / ASVCount) * 100
+# more than 90% ASVs' abundances are less than 0.01%
+# 91.33
+round(yintercept, 2)
+noteLineDf <-
+  data.frame(
+    x1 = c(xintercept, -Inf),
+    x2 = c(xintercept,xintercept),
+    y1 = c(-Inf, yintercept),
+    y2 = c(yintercept, yintercept)
+  )
+p <-
+  p + geom_segment(aes(
+    x = x1,
+    y = y1,
+    xend = x2,
+    yend = y2,
+  ), data = noteLineDf,linetype = 4)+
+  scale_x_continuous(breaks = c(0,xintercept ,0.025, 0.05, 0.075,0.1))+
+  scale_y_continuous(breaks = c(0,25 ,50,75,round(yintercept,1),100))
+p + ggsave("../figure/Rare ASV cutoff and ratio.pdf",
+           width = 8,
+           height = 6)
+```
+
+The cumulative distribution and frequency stats of abundance of rare ASV
+
+In this paper, they declaim abundance fluctuations are gamma distributed.
+
+Grilli, J. Macroecological laws describe variation and diversity in microbial communities. Nat Commun 11, 4743 (2020). https://doi.org/10.1038/s41467-020-18529-y
+
+```{r The cumulative distribution and frequency stats of abundance of rare ASV}
+library(scales)
+Abundance <- data.frame(Abundance = totalAbundance[totalAbundance<0.01])
+p <-
+  ggplot(data = Abundance,
+         aes(x = Abundance))
+# xlim(0,0.1)+
+p2 <- p + stat_ecdf(geom = "step", pad = FALSE) +
+  scale_y_continuous(labels = percent, name = "ASV ratio (%)") +
+  xlab("ASV abundance (%)")
+# it is same as Rare ASV cutoff and ratio.pdf
+p2
+
+# frequency stats
+
+p3 <- p + geom_histogram(binwidth = 0.01 / 50)
+p3 <- p3 + xlab("ASV abundance (%)") +
+  ylab("ASV counts") +
+  theme(text = element_text(size = 20))
+
+p3 + ggsave("../figure/Rare ASV frequency stats.pdf",
+           width = 10,
+           height = 6)
+```
+
+```{r abundance acculation of ASV}
+rankedTotalAbundance<-sort(totalAbundance)
+accumulateAbundance<-accumulate(rankedTotalAbundance,`+`)
+accumulateAbundanceTable<-data.frame(accumulateAbundance=accumulateAbundance,
+                                     ASVratio=((1:ASVCount)/ASVCount*100))
+
+# 94.38% ASV's abundance<0.01, of which the sum of abundance is 20.82%
+notePoint<-accumulateAbundanceTable[sum(rankedTotalAbundance<0.01),]
+xintercept<-notePoint$ASVratio
+yintercept<-notePoint$accumulateAbundance
+noteLineDf <-
+  data.frame(
+    x1 = c(xintercept, -Inf),
+    x2 = c(xintercept,xintercept),
+    y1 = c(-Inf, yintercept),
+    y2 = c(yintercept, yintercept)
+  )
+p <-
+  ggplot(data = accumulateAbundanceTable,
+         mapping = aes(x = ASVratio, y = accumulateAbundance)) + geom_line() +
+  xlab("ASV ratio (%)")+
+  ylab("Accumulate Abundance (%)") +
+  theme(text = element_text(size = 20))
+p <-
+  p + geom_segment(aes(
+    x = x1,
+    y = y1,
+    xend = x2,
+    yend = y2,
+  ), data = noteLineDf,linetype = 4)+
+  scale_x_continuous(breaks = c(0,20 ,50, 75, round(xintercept,1),100))+
+  scale_y_continuous(breaks = c(0,round(yintercept,1),25 ,50,75,100))
+p + ggsave("../figure/Rare ASV abundance acculation.pdf",
+           width =12,
+           height = 6)
+```

@@ -123,3 +123,173 @@ p + ggsave("../figure/Rare ASV abundance acculation.pdf",
            width =12,
            height = 6)
 ```
+
+### resample cutoff step 0.001
+
+```{r normalize}
+library(DESeq2)
+ASVForNormalization <- ASV[, 2:220]
+coldata <- data.frame(row.names = colnames(ASVForNormalization))
+# ~ 1 can be used for no design
+dds <- DESeqDataSetFromMatrix(countData = ASVForNormalization,
+                              colData = coldata,
+                              design =  ~ 1)
+dds <- estimateSizeFactors(dds, type = 'poscounts')
+# sizeFactors(dds)
+normalizedASV <- counts(dds, normalized = TRUE)
+normalizedASV <- data.frame(normalizedASV)
+```
+
+#### resample
+
+```{r}
+library(dplyr)
+
+getRareSpeciesRatio <- function(ASV, cutoffs) {
+  totalAbundance <- rowSums(ASV)
+  # remove ASV with zero abundance
+  totalAbundance <- totalAbundance[totalAbundance > 0]
+  totalCount <- sum(totalAbundance)
+  totalAbundance <- totalAbundance / totalCount * 100
+  ASVCount <- length(totalAbundance)
+  SpeciesRatio <-
+    sapply(cutoffs, function(cutoff) {
+      sum(totalAbundance < cutoff) / ASVCount * 100
+    }, simplify = T)
+  return(SpeciesRatio)
+}
+
+# cutoff is from 0.01 to 1
+cutoffs <- seq(0.01, 1, length.out = 100)
+# resample 1~100 sample, each time 10
+ns <- rep(1:100, each = 10)
+seeds <- 1:length(ns)
+
+reSample <- function(seed, n, pool) {
+  set.seed(seed)
+  sample(pool, n)
+}
+reSampledColIndex <-
+  mapply(reSample, seeds, ns, MoreArgs = list(pool = 1:219))
+
+reSampledRareSpeciesRatio <-
+  mapply(
+    function(colIndex, cutoffs) {
+      resampledASV <- normalizedASV[colIndex]
+      ratio <- getRareSpeciesRatio(resampledASV, cutoffs)
+      return(ratio)
+    },
+    reSampledColIndex,
+    MoreArgs = list(cutoffs = cutoffs),
+    SIMPLIFY = T
+  )
+
+reSampledResults <- data.frame(
+  ns = rep(ns, each = length(cutoffs)),
+  seeds = rep(seeds, each = length(cutoffs)),
+  cutoffs = rep(cutoffs, time = length(ns)),
+  reSampledRareSpeciesRatio = c(reSampledRareSpeciesRatio)
+)
+reSampledResultsSummary <- group_by(reSampledResults, ns, cutoffs)
+reSampledResultsSummary <-
+  summarise(
+    reSampledResultsSummary,
+    SpeciesRatioMean = mean(reSampledRareSpeciesRatio),
+    SpeciesRatioSD = sd(reSampledRareSpeciesRatio)
+  )
+```
+#### render 3D plot in plot3D
+
+[plot3D](http://www.sthda.com/english/wiki/impressive-package-for-3d-and-4d-graph-r-software-and-data-visualization#change-the-position-of-the-legend)
+
+```{r}
+library("plot3D")
+`Replicate count` = reSampledResultsSummary$ns
+`Rare species cutoff` = reSampledResultsSummary$cutoffs
+`Rare species ratio` = reSampledResultsSummary$SpeciesRatioMean
+pdf(
+  "../figure/replicate count 0-100,cutoff 0.01-0.1, step 0.01 and Rare species ratio 3D.pdf",
+  20,
+  9
+)
+scatter3D(
+  `Replicate count`,
+  `Rare species cutoff`,
+  `Rare species ratio`,
+  colvar = reSampledResultsSummary$SpeciesRatioSD,
+  # horizontal angel
+  theta = -45,
+  # vertical angel
+  phi = 0,
+  bty = "g",
+  pch = 20,
+  # point size
+  cex = 1,
+  # font size
+  cex.axis = 1.5,
+  cex.lab = 1.5,
+  ticktype = "detailed",
+  xlab = "Replicate count",
+  ylab = "Rare species cutoff (%)",
+  zlab = "Rare species ratio (%)",
+  clab = "Species ratio SD (%)",
+  # legend parameter, font.clab to set font plain or bold is invalid
+  colkey = list(
+    shift = 0,
+    side = 4,
+    length = 0.5,
+    cex.clab = 1.5,
+    font.clab = 1
+  )
+)
+dev.off()
+```
+
+#### tieplot in ggplot2
+
+```{r}
+library(ggplot2)
+df <- reSampledResultsSummary
+p <- ggplot(df) +
+  geom_tile(aes(
+    ns,
+    cutoffs,
+    fill = SpeciesRatioMean,
+    width = 1,
+    height = 0.01
+  )) +
+  scale_fill_gradientn(colours = topo.colors(15)) +
+  theme_bw() +
+  ylab("Rare species cutoff (%)") +
+  xlab("Replicate count") +
+  # change legend title
+  labs(fill = "Rare species ratio (%)") +
+  theme(text = element_text(size = 20))
+p + ggsave(
+  "../figure/replicate count 0-100,cutoff 0.01-0.1, step 0.01 and Rare species ratio.pdf",
+  width = 12,
+  height = 9
+)
+
+p <- ggplot(df) +
+  geom_tile(aes(
+    ns,
+    cutoffs,
+    fill = SpeciesRatioSD,
+    width = 1,
+    height = 0.01
+  )) +
+  scale_fill_gradientn(colours = topo.colors(15)) +
+  theme_bw() +
+  ylab("Rare species cutoff (%)") +
+  xlab("Replicate count") +
+  # change legend title
+  labs(fill = "Rare species ratio SD (%)") +
+  theme(text = element_text(size = 20))
+p + ggsave(
+  "../figure/replicate count 0-100,cutoff 0.01-0.1, step 0.01 and Rare species ratio SD.pdf",
+  width = 12,
+  height = 9
+)
+```
+

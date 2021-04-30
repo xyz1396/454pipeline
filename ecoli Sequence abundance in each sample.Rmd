@@ -1,0 +1,207 @@
+---
+title: "ecoli Sequence abundance in each sample"
+author: "xyz"
+date: "2021/4/29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### draw plot
+
+```{r}
+ASV <- read.csv("../table/ASVwithTaxByNaive_bayesSortByOneMore.csv")
+ASV[is.na(ASV)] <- ""
+ecoli <- ASV[ASV$Genus == "g__Escherichia-Shigella", ]
+sampleNames <- colnames(ecoli)[2:220]
+sampleSequenceCount1 <- colSums(ecoli[, 2:220])
+p1 <-
+  ggplot(data = data.frame(
+    y = as.integer(sampleSequenceCount1),
+    x = rep("", length(sampleSequenceCount1))
+  ),
+  mapping = aes(y = y, x = x)) +
+  geom_violin() +
+  geom_boxplot(width = .1) +
+  ylab("Depth in each sample") +
+  xlab("E. coli") +
+  theme(text = element_text(size = 20))
+# all reads
+sampleSequenceCount2 <- colSums(ASV[, 2:220])
+p2 <-
+  ggplot(data = data.frame(
+    y = as.integer(sampleSequenceCount2),
+    x = rep("", length(sampleSequenceCount2))
+  ),
+  mapping = aes(y = y, x = x)) +
+  geom_violin() +
+  geom_boxplot(width = .1) +
+  ylab("Depth in each sample") +
+  xlab("All reads") +
+  theme(text = element_text(size = 20))
+# ratio
+sampleSequenceCount1 <-
+  cbind(id = rownames(sampleSequenceCount1), sampleSequenceCount1)
+sampleSequenceCount2 <-
+  cbind(id = rownames(sampleSequenceCount2), sampleSequenceCount2)
+sampleSequenceCount3 <-
+  inner_join(sampleSequenceCount1, sampleSequenceCount2, c("id" = "id"))
+sampleSequenceCount3$ratio <-
+  sampleSequenceCount3$sampleSequenceCount1 / sampleSequenceCount3$sampleSequenceCount2 *
+  100
+colnames(sampleSequenceCount3) <-
+  c("Sample ID", "E. coli reads", "All reads", "Ratio")
+write.csv(sampleSequenceCount3,
+          "../table/ecoli Sequence abundance in each sample.csv",
+          row.names = F)
+ratio <- sampleSequenceCount3$Ratio
+meanRatio <- mean(ratio)
+# 1.534124
+meanRatio
+# 1.49413
+median(ratio)
+p3 <-
+  ggplot(data = data.frame(y = ratio,
+                           x = rep("", length(ratio))),
+         mapping = aes(y = y, x = x)) +
+  geom_violin() +
+  geom_boxplot(width = .1) +
+  xlab("Ratio in each sample (%)") +
+  ylab("E. coli") +
+  theme(text = element_text(size = 20))
+```
+
+### joint plot
+
+```{r}
+library(patchwork)
+p2 + p1 + p3 +
+  ggsave(
+    "../figure/ecoli Sequence abundance in each sample.pdf",
+    width = 12,
+    height = 9,
+  )
+```
+
+### frequency stats of ecoli sequence
+
+[calculate confidence intervals for a vector](https://stackoverflow.com/questions/48612153/how-to-calculate-confidence-intervals-for-a-vector)
+[histogram with normal curve](https://stackoverflow.com/questions/6967664/ggplot2-histogram-with-normal-curve)
+
+```{r}
+interval <- 0.99
+ratio_sd <- sd(ratio)
+# Sample size
+n <- length(ratio)
+# Mean of sample
+ratio_mean <- mean(ratio)
+# Error according to t distribution
+error <- qt((interval + 1) / 2, df = n - 1) * ratio_sd / sqrt(n)
+lower <- ratio_mean - error
+upper <- ratio_mean + error
+
+p4 <-
+  ggplot(data = data.frame(x = ratio),
+         mapping = aes(x = x)) +
+  geom_histogram(
+    binwidth = 0.1,
+    fill = I("white"),
+    color = I("black")
+  ) +
+  xlab("Ratio in each sample (%)") +
+  ylab("Sample Count") +
+  theme(text = element_text(size = 20)) +
+  geom_vline(
+    xintercept = c(lower, upper),
+    color = "orange",
+    linetype = 4
+  ) +
+  geom_vline(xintercept = ratio_mean,
+             color = "red",
+             linetype = 1,size = 1) +
+  scale_x_continuous(breaks = c(0.5, 1, as.numeric(round(ratio_mean, 2)), 2, 2.5),
+                     limits = c(0,3)) +
+  # norm distribution
+  # stat_function(
+  #   fun = function(x)
+  #     dnorm(x, mean = ratio_mean, sd = ratio_sd) *n * 0.1
+  # ,color = "darkred", size = 1)+
+  # t distribution
+  stat_function(
+    fun = function(x)
+      # convert to standard distribution
+      dt((x - ratio_mean) / ratio_sd, df = n - 1) / ratio_sd * 0.1 * n
+    ,
+    color = "darkred",
+    size = 1
+  )
+p4 + ggsave(
+  "../figure/ecoli Sequence distribution in each sample.pdf",
+  width = 12,
+  height = 9,
+)
+```
+
+# Real and fake Ecoli sequence abundance in each sample
+
+```{r}
+realReads<-ecoli[1,2:220]
+# 11561
+sum(realReads)
+fakeReads<-ecoli[-1,2:220]
+# 77
+sum(fakeReads)
+# 12416 TRUE
+realSequenceCount<-data.frame(id=colnames(realReads),Count=unlist(realReads))
+fakeSequenceCount<-data.frame(id=colnames(fakeReads),Count=unlist(colSums(fakeReads)))
+allCount<-full_join(realSequenceCount,fakeSequenceCount,c("id"="id"))
+colnames(allCount)<-c("Sample ID","Same","Different")
+allCount[is.na(allCount)]<-0
+allCount$Total<-allCount$Same+allCount$Different
+allCount<-arrange(allCount, desc(Total))
+write.csv(allCount,"../table/ecoli Sequence identity in each sample.csv",row.names = F)
+# mean fake ratio,0.52%
+scales::label_percent(.01)(mean(allCount$Different/allCount$Total,na.rm=T))
+# mean real ratio,99.48%
+scales::label_percent(.01)(mean(allCount$Same/allCount$Total,na.rm=T))
+allCount2 <-
+  pivot_longer(allCount[,-4],
+               !`Sample ID`,
+               names_to = "SameOrDifferent",
+               values_to = "Count")
+allCount2$`Sample ID`<-factor(allCount2$`Sample ID`,levels = allCount$`Sample ID`)
+p<-ggplot(allCount2) +
+  geom_bar(
+    aes(
+      x = `Sample ID`,
+      y = Count,
+      fill = SameOrDifferent,
+      colour = SameOrDifferent
+    ),
+    # col=I("transparent"),
+    stat = "identity",
+    width = 0.5,
+  ) +
+  # theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    text = element_text(size = 25),
+  ) +
+  scale_size(guide = "none")+
+  # only left one legend
+  scale_color_discrete(breaks="SameOrDifferent")+
+  guides(fill = guide_legend(title = "Sequence identity"))
+p+ggsave(
+    "../figure/ecoli Sequence identity in each sample.pdf",
+    width = 16,
+    height = 9,
+  )
+```
+

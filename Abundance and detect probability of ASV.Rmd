@@ -1,0 +1,144 @@
+---
+title: "Abundance and detect probability of ASV"
+author: "xyz"
+date: "2021/4/30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# all species at ASV level
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(vegan)
+ASV <- read.csv("../table/ASVwithTaxByNaive_bayesSortByOneMore.csv")
+ASV <- ASV[, 2:220]
+medianDepth <- median(colSums(ASV))
+# ASV <- ASV[,colSums(ASV)>=medianDepth]
+# # rarefy
+# ASV <-t(rrarefy(t(ASV),medianDepth))
+abundance <-
+  rowSums(ASV) / sum(rowSums(ASV)) * 100
+detectProb <- rowSums(ASV > 0) / ncol(ASV) * 100
+df <-
+  data.frame(abundance = abundance, detectProb = detectProb)
+p <-
+  ggplot(data = df,
+         mapping = aes(x = abundance, y = detectProb)) + geom_point(size =
+                                                                      1) +
+  xlab("Abundance (%)") +
+  ylab("Detect probability (%)") +
+  theme(text = element_text(size = 20))
+p + ggsave(
+  "../figure/Abundance and detect probability at ASV level.pdf",
+  width = 12,
+  height = 9
+)
+
+# if the N in Hypergeometric Distribution is large
+# it can be treated as Binomial Distribution
+f <- function(abundance, t) {
+  p <- abundance / 100
+  prob <- 1 - (1 - p + t * p) * (1 - p) ** (t - 1)
+  return(prob * 100)
+}
+fit <-
+  nls(detectProb ~ f(abundance, t),
+      data = df,
+      start = list(t = 1250))
+# Estimate Std. Error t value Pr(>|t|)
+# 908.85   4.16       218.5   <2e-16 ***
+summary(fit)
+# t should be mean(colSums(ASV)),3598.21, but the estimate is 908.85
+# the reason is probably irregular depths and sequences removed at the denoise step
+t <- round(coef(fit), 0)
+f <- function(abundance) {
+  p <- abundance / 100
+  prob <- 1 - pbinom(1, t, p)
+  return(prob * 100)
+}
+f(0.001)
+p2 <- p + stat_function(fun = f,
+                        color = "darkred",
+                        size = 1) +
+  annotate(
+    geom = "text",
+    label ="detect probability=1-pbinom(singleton, depth, abundance/100)",
+    x = 1.3,
+    y = 50,
+    parse = F,
+    size = 6
+  )
+p2 + ggsave(
+  "../figure/Abundance and detect probability and fit by binomial distribution.pdf",
+  width = 12,
+  height = 9
+)
+```
+
+# for E. coli
+
+```{r}
+library(latex2exp)
+ASV <- read.csv("../table/ASVwithTaxByNaive_bayesSortByOneMore.csv")
+genus<-ASV[,c(2:220,226)]
+genus<-group_by(genus,Genus)
+genus<-summarise_all(genus,sum)
+# 266
+which(genus$Genus=="g__Escherichia-Shigella")
+genusForRarefy<-genus[, -1]
+getProb<-function(depth,speciesRow){
+  # remove sample with lower depth than depth
+  genusRarefied<-genusForRarefy[,colSums(genusForRarefy)>depth]
+  genusRarefied<-as.data.frame(t(rrarefy(t(genusRarefied), depth)))
+  prob<-sum(genusRarefied[speciesRow,]>0)/ncol(genusRarefied)*100
+  return(prob)
+}
+
+# The 266 row is E. coli
+Prob<-mapply(getProb,0:500,MoreArgs = list(speciesRow = 266))
+df<-data.frame(x=0:500,y=Prob)
+
+p <-
+  ggplot(data = df,
+         mapping = aes(x = x, y = y)) + geom_point(size =1) +
+  xlab("Sequncing depth in each sample") +
+  ylab("Detect probability (%)") +
+  theme(text = element_text(size = 20))
+p + ggsave(
+  "../figure/E.coli sequencing depth and detect probability.pdf",
+  width = 12,
+  height = 9
+)
+
+totalCount<-sum(genus[,-1])
+ecoliCount<-sum(genus[266,-1])
+noneEcoliCount<-totalCount-ecoliCount
+f <- function(depth) {
+  Prob<-1-dhyper(depth, noneEcoliCount, ecoliCount, depth)
+  return(Prob*100)
+}
+# 99.94138
+f(500)
+p2 <- p + stat_function(fun = f,
+                       color = "darkred",
+                       size = 1) +
+  annotate(
+    geom = "text",
+    label = TeX("$detect\\,probability=100%\\times (1-dhyper(depth, none\\,E.\\,coli\\,count, E.\\,coli\\,count, depth))$"),
+    x = 300,
+    y = 50,
+    parse = T,
+    size = 6
+  )
+p2 + ggsave(
+  "../figure/E.coli sequencing depth and detect probability and fit by Hypergeometric Distribution.pdf",
+  width = 12,
+  height = 9
+)
+```
+

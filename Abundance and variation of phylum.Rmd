@@ -1,0 +1,62 @@
+---
+title: "Abundance and variation of phylum"
+author: "xyz"
+date: "2021/5/11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### count aggregate at phylum level
+
+```{r}
+library(tidyverse)
+ASV <- read.csv("../table/ASVwithTaxByNaive_bayesSortByOneMore.csv")
+phylum<-unite(ASV[, 2:222], phylum, Kingdom:phylum, sep = "|")
+phylum<-group_by(phylum,phylum)
+phylum<-summarise_all(phylum,sum)
+phylum <- group_by(phylum, phylum)
+phylum <- summarise_all(phylum, sum)
+phylum<-dplyr::filter(phylum,phylum!="D_0__Bacteria|NA",
+                      phylum!="d__Eukaryota|NA",
+                      phylum!="Unassigned|NA",
+                      phylum!="d__Bacteria|NA"
+                      )
+# 56
+nrow(phylum)
+```
+
+### boxplot
+
+```{r}
+phylumShort<-phylum
+phylumShort$phylum<-str_split(phylumShort$phylum,"\\|",simplify = T)[,2]
+phylumShort$phylum<-str_sub(phylumShort$phylum,4)
+totalCount<-rowSums(phylumShort[,-1])
+phylumTotal<-data.frame(phylum=phylumShort$phylum,Abundance=totalCount/sum(totalCount)*100)
+phylumTotal<-arrange(phylumTotal,desc(Abundance))
+# get top 10
+phylumTotal<-phylumTotal[1:10,]
+phylumShort[,-1]<-prop.table(as.matrix(phylumShort[,-1]),2)*100
+phylumShort<-pivot_longer(phylumShort,-phylum,"Sample",values_to = "Abundance")
+phylumShort<-phylumShort[phylumShort$phylum %in% phylumTotal$phylum,]
+phylumShort$phylum<-factor(phylumShort$phylum,levels = phylumTotal$phylum)
+p <-
+  ggplot(data = phylumShort,
+         mapping = aes(x=phylum,y = Abundance,fill=phylum)) +
+  geom_violin() +
+  geom_boxplot(width = .1)+
+  ylab("Abundance %") +
+  xlab("phylum") +
+  theme(text = element_text(size = 20),legend.position="none",
+        axis.text.x = element_text(angle = -90,vjust = 0,hjust = 0
+                                   # ,face = "italic"
+                                   ))
+p + ggsave(
+  "../figure/ASV Abundance at phylum level.pdf",
+  width = 12,
+  height = 9
+)
+```

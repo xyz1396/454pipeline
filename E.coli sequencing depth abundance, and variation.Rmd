@@ -1,0 +1,76 @@
+---
+title: "E.coli sequencing depth abundance, and variation"
+author: "xyz"
+date: "2021/5/11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# relative abundance
+
+```{r}
+library(tidyverse)
+library(vegan)
+ASV <- read.csv("../table/ASVwithTaxByNaive_bayesSortByOneMore.csv")
+genus <- unite(ASV[, 2:226], Genus, Kingdom:Genus, sep = "|")
+genus <- group_by(genus, Genus)
+genus <- summarise_all(genus, sum)
+# 905
+ecoli <-
+  which(
+    genus$Genus == "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacterales|f__Enterobacteriaceae|g__Escherichia-Shigella"
+  )
+ASVForRarefy <- genus[,-1]
+
+getAbundance <- function(depth, speciesRow) {
+  # remove sample with lower depth than depth
+  ASVRarefied <- ASVForRarefy[, colSums(ASVForRarefy) > depth]
+  ASVRarefied <- as.data.frame(t(rrarefy(t(ASVRarefied), depth)))
+  abundance <- ASVRarefied[speciesRow, ] / colSums(ASVRarefied) * 100
+  return(abundance)
+}
+
+median(colSums(ASVForRarefy))
+# The first row is E. coli
+abundance<-mapply(getAbundance,seq(0, 5000, by=50),MoreArgs = list(speciesRow = ecoli))
+
+# transform to df for plot
+df<-data.frame()
+j<-0
+for (i in seq(0, 5000, by=50)){
+  j<-j+1
+  temp<-data.frame(Depth=i,Abundance=unlist(abundance[[j]]))
+  df<-rbind(df,temp)
+}
+df<-df[!is.na(df$Abundance),]
+p <-
+  ggplot(data = df,
+         mapping = aes(x = Depth, y = Abundance)) + geom_point(size =1) +
+  xlab("Sequncing depth in each sample") +
+  ylab("Abundance (%)") +
+  theme(text = element_text(size = 20))
+# add average line
+df2<-df
+df2<-group_by(df2,Depth)
+df2<-summarise(df2,Average = mean(Abundance),SD=sd(Abundance))
+# Depth Average SD
+# 4750  1.12    0.262
+# 4800  1.14    0.240
+# 4850  1.12    0.239
+# 4900  1.11    0.234
+# 4950  1.12    0.235
+# 5000  1.12    0.242
+tail(df2)
+p<-p+geom_line(data = df2,aes(x = Depth, y = Average,color="red"),size=1.3)+
+  geom_line(data = df2,aes(x = Depth, y = SD,color="blue"),size=1.3)+
+  scale_color_manual(labels = c("Abundance SD","Abundance average"), values = c("blue","red"))+
+  theme(legend.title=element_blank())
+p + ggsave(
+  "../figure/E.coli sequencing depth and Abundance SD 0-5000.pdf",
+  width = 12,
+  height = 9
+)
+```

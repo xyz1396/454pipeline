@@ -80,6 +80,48 @@ p2 + ggsave(
 )
 ```
 
+# detect frequency statistics of genus
+
+```{r}
+library(Cairo)
+ASV <- read.csv("../table/ASVwithTaxByNaive_bayesSortByOneMore.csv")
+genus<-unite(ASV[, 2:226], genus, Kingdom:Genus, sep = "|")
+genus<-group_by(genus,genus)
+genus<-summarise_all(genus,sum)
+detectTime <- rowSums(genus[, 2:220] > 0)+1
+detectProb <- rowSums(genus[, 2:220] > 0) / 219 * 100
+df <-
+  data.frame(
+    detectTime = detectTime,
+    detectProb = ifelse(
+      detectProb >= 90,
+      "Detect probability ≥ 90%",
+      "Detect probability < 90%"
+    )
+  )
+
+p <-
+  ggplot(data = df,
+         mapping = aes(x = detectTime, fill = detectProb)) +
+  geom_histogram(binwidth = 1,
+                 color = I("white")) +
+  xlab("Detect frequency") +
+  # scale_y_log10(
+  #   breaks = scales::trans_breaks("log10", function(x)
+  #     10 ^ x),
+  #   labels = scales::trans_format("log10", scales::math_format(10 ^ .x))
+  # ) +
+  # annotation_logticks(sides = "l")+
+  ylab("Genus Count") +
+  # ggplot2 cannot print "≥" in pdf
+  # scale_fill_discrete(labels = c("Detect probability < 90%", "Detect probability ≥ 90%")) +
+  theme(text = element_text(size = 20), legend.title = element_blank())
+# Cairo packge can print more unicode symbol
+cairo_pdf(file = "../figure/detect frequency statistics of genus.pdf", width = 12, height = 9)
+p
+dev.off()
+```
+
 # for E. coli
 
 ```{r}

@@ -1,0 +1,87 @@
+---
+title: "Abundance and variation at each level from phylum to species"
+author: "xyz"
+date: "2021/5/12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### count aggregate at phylum level
+
+```{r}
+library(tidyverse)
+ASV <- read.csv("../table/ASVwithTaxByNaive_bayesSortByOneMore.csv")
+
+totalCount <- colSums(ASV[, 2:220])
+ASVRemoveNA <- ASV[!is.na(ASV$Phylum),]
+ASVRemoveNA <-
+  unite(ASVRemoveNA[, c(2:220, 221:222)], Phylum, Kingdom:Phylum, sep = "|")
+ASVRemoveNA <- group_by(ASVRemoveNA, Phylum)
+ASVRemoveNA <- summarise_all(ASVRemoveNA, sum)
+
+totalType <- nrow(ASVRemoveNA)
+totalAbundance <- colSums(ASVRemoveNA[, 2:220]) / totalCount * 100
+totalAbundanceMean <- mean(totalAbundance)
+totalAbundanceSD <- sd(totalAbundance)
+
+ASVInEach <- ASVRemoveNA[rowSums(ASVRemoveNA[, 2:220] > 0) == 219,]
+totalType2 <- nrow(ASVInEach)
+totalAbundance2 <- colSums(ASVInEach[, 2:220]) / totalCount * 100
+totalAbundanceMean2 <- mean(totalAbundance2)
+totalAbundanceSD2 <- sd(totalAbundance2)
+```
+
+### count aggregate at each level
+
+```{r}
+aggregateEach <- function(level) {
+  ASVRemoveNA <- ASV[!is.na(ASV[, level]),]
+  ASVRemoveNA <-
+    unite(ASVRemoveNA[, c(2:220, 221:227)], Type, Kingdom:level, sep = "|")
+  ASVRemoveNA <- group_by(ASVRemoveNA[, 1:220], Type)
+  ASVRemoveNA$Type <- as.character(ASVRemoveNA$Type)
+  ASVRemoveNA <- summarise_all(ASVRemoveNA, sum)
+  # all phylum with annotation
+  totalType <- nrow(ASVRemoveNA)
+  totalAbundance <- colSums(ASVRemoveNA[, 2:220]) / totalCount * 100
+  totalAbundanceMean <- mean(totalAbundance)
+  totalAbundanceSD <- sd(totalAbundance)
+  # phylum idnetified in each sample
+  ASVInEach <-
+    ASVRemoveNA[rowSums(ASVRemoveNA[, 2:220] > 0) == 219,]
+  totalType2 <- nrow(ASVInEach)
+  totalAbundance2 <- colSums(ASVInEach[, 2:220]) / totalCount * 100
+  totalAbundanceMean2 <- mean(totalAbundance2)
+  totalAbundanceSD2 <- sd(totalAbundance2)
+  return(
+    c(
+      level,
+      totalType,
+      totalAbundanceMean,
+      totalAbundanceSD,
+      totalType2,
+      totalAbundanceMean2,
+      totalAbundanceSD2
+    )
+  )
+}
+results <- sapply(colnames(ASV)[221:227], aggregateEach, simplify = T)
+results[c(3, 4, 6, 7), ] <- round(as.numeric(results[c(3, 4, 6, 7), ]), 2)
+results[3, ] <- paste0(results[3, ], "±", results[4, ])
+results[6, ] <- paste0(results[6, ], "±", results[7, ])
+results <- results[c(-4, -7), ]
+# taxa with annotation
+# taxa idnetified in each sample
+write.table(
+  results,
+  quote = F,
+  "../table/Abundance and variation at each level from phylum to species.csv",
+  sep = ",",
+  row.names = F,
+  col.names = F,
+  fileEncoding = "UTF-8"
+)
+```

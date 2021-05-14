@@ -1,0 +1,99 @@
+---
+title: "Abundance and variation of species"
+author: "xyz"
+date: "2021/5/13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# count aggregate at species level
+ASV <- read.csv("../table/ASVwithTaxByNaive_bayesSortByOneMore.csv")
+species <-
+  unite(ASV[, c(2:227)], Species, Kingdom:Species, sep = "|")
+species <- group_by(species, Species)
+species <- summarise_all(species, sum)
+# 1602
+nrow(species)
+
+abundance <- prop.table(as.matrix(species[, 2:220]),2)*100
+meanAbundance<-  rowMeans(abundance)
+sdAbundance<-apply(abundance,1,sd)
+
+df <-
+  data.frame(meanAbundance = meanAbundance, sdAbundance = sdAbundance)
+df <- df[df$meanAbundance < 1.5, ]
+p <-
+  ggplot(data = df,
+         mapping = aes(x = meanAbundance, y = sdAbundance)) + geom_point(size =
+                                                                      1) +
+  xlab("Abundance (%)") +
+  ylab("Abundance SD (%)") +
+  theme(text = element_text(size = 20))
+p + ggsave(
+  "../figure/Abundance and variation at species level.pdf",
+  width = 12,
+  height = 9
+)
+```
+
+### fit abundance and variation of species 
+
+```{r}
+f = function(abundance,k,n) {
+  k*abundance**n
+}
+fit <-
+  nls(
+    sdAbundance ~ f(meanAbundance,k,n),
+    data = df,
+    start = list(k = 0.5, n=1)
+  )
+fitResult<-summary(fit)
+#   Estimate Std. Error t value Pr(>|t|)    
+# k 0.503023   0.004530   111.0   <2e-16 ***
+# n 0.514941   0.004503   114.4   <2e-16 ***
+fitResult
+k<-fitResult[["coefficients"]]["k","Estimate"]
+n<-fitResult[["coefficients"]]["n","Estimate"]
+f = function(abundance) {
+  k*abundance**n
+}
+df <-
+  data.frame(meanAbundance = meanAbundance, sdAbundance = sdAbundance)
+df <- df[df$meanAbundance < 1.5, ]
+p <-
+  ggplot(data = df,
+         mapping = aes(x = meanAbundance, y = sdAbundance)) + geom_point(size =
+                                                                      1) +
+  xlab("Abundance (%)") +
+  ylab("Abundance SD (%)") +
+  theme(text = element_text(size = 20))
+p2 <- p + stat_function(fun = f,
+                       color = "darkred",
+                       size = 1) +
+  annotate(
+    geom = "text",
+    label = "R^2<0.001",
+    x = 1.1,
+    y = 0.23,
+    parse = T,
+    size = 6
+  )+
+  annotate(
+    geom = "text",
+    label = paste0("Abundance~SD==",round(k,2),"~Abundance^","{",round(n,2),"}"),
+    x = 1.1,
+    y = 0.27,
+    parse = T,
+    size = 6
+  )
+p2 + ggsave(
+  "../figure/Fit Abundance and variation of species.pdf",
+  width = 12,
+  height = 9
+)
+```

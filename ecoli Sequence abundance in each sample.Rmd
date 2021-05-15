@@ -12,9 +12,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ### draw plot
 
 ```{r}
+library(tidyverse)
 ASV <- read.csv("../table/ASVwithTaxByNaive_bayesSortByOneMore.csv")
 ASV[is.na(ASV)] <- ""
-ecoli <- ASV[ASV$Genus == "g__Escherichia-Shigella", ]
+ecoli <- ASV[ASV$Genus == "g__Escherichia-Shigella",]
 sampleNames <- colnames(ecoli)[2:220]
 sampleSequenceCount1 <- colSums(ecoli[, 2:220])
 p1 <-
@@ -43,9 +44,9 @@ p2 <-
   theme(text = element_text(size = 20))
 # ratio
 sampleSequenceCount1 <-
-  cbind(id = rownames(sampleSequenceCount1), sampleSequenceCount1)
+  data.frame(id = sampleNames, sampleSequenceCount1 = sampleSequenceCount1)
 sampleSequenceCount2 <-
-  cbind(id = rownames(sampleSequenceCount2), sampleSequenceCount2)
+  data.frame(id = sampleNames, sampleSequenceCount2 = sampleSequenceCount2)
 sampleSequenceCount3 <-
   inner_join(sampleSequenceCount1, sampleSequenceCount2, c("id" = "id"))
 sampleSequenceCount3$ratio <-
@@ -53,9 +54,17 @@ sampleSequenceCount3$ratio <-
   100
 colnames(sampleSequenceCount3) <-
   c("Sample ID", "E. coli reads", "All reads", "Ratio")
-write.csv(sampleSequenceCount3,
-          "../table/ecoli Sequence abundance in each sample.csv",
-          row.names = F)
+# 3361
+median(sampleSequenceCount3$`All reads`)
+# 51
+median(sampleSequenceCount3$`E. coli reads`)
+# 1.49413 %
+median(sampleSequenceCount3$Ratio)
+write.csv(
+  sampleSequenceCount3,
+  "../table/ecoli Sequence abundance in each sample.csv",
+  row.names = F
+)
 ratio <- sampleSequenceCount3$Ratio
 meanRatio <- mean(ratio)
 # 1.534124
